@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package novitabox.v1;
+
+import "google/protobuf/empty.proto";
+import "novitabox/v1/types.proto";
+
+option go_package = "github.com/novitalabs/NovitaBox/internal/pb/novitabox/v1;novitaboxv1";
+
+service BoxShim {
+  rpc CreateRuntime(CreateRuntimeRequest) returns (RuntimeInfo);
+  rpc PauseRuntime(PauseRuntimeRequest) returns (RuntimeInfo);
+  rpc ResumeRuntime(ResumeRuntimeRequest) returns (RuntimeInfo);
+  rpc KillRuntime(KillRuntimeRequest) returns (google.protobuf.Empty);
+  rpc StartRuntime(StartRuntimeRequest) returns (RuntimeInfo);
+  rpc StopRuntime(StopRuntimeRequest) returns (RuntimeInfo);
+  rpc RebootRuntime(RebootRuntimeRequest) returns (RuntimeInfo);
+  rpc Status(StatusRequest) returns (RuntimeInfo);
+  rpc Capabilities(CapabilitiesRequest) returns (RuntimeCapabilities);
+}
+
+message CreateRuntimeRequest {
+  RuntimeSpec runtime_spec = 1;
+}
+
+message PauseRuntimeRequest {
+  string sandbox_id = 1;
+}
+
+message ResumeRuntimeRequest {
+  RuntimeSpec runtime_spec = 1;
+}
+
+message KillRuntimeRequest {
+  string sandbox_id = 1;
+}
+
+message StartRuntimeRequest {
+  RuntimeSpec runtime_spec = 1;
+}
+
+message StopRuntimeRequest {
+  string sandbox_id = 1;
+  uint32 timeout_seconds = 2;
+}
+
+message RebootRuntimeRequest {
+  string sandbox_id = 1;
+  uint32 timeout_seconds = 2;
+}
+
+message StatusRequest {
+  string sandbox_id = 1;
+}
+
+message CapabilitiesRequest {
+  RuntimeType runtime_type = 1;
+}

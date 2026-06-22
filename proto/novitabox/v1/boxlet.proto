@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+package novitabox.v1;
+
+import "google/protobuf/empty.proto";
+import "novitabox/v1/types.proto";
+
+option go_package = "github.com/novitalabs/NovitaBox/internal/pb/novitabox/v1;novitaboxv1";
+
+service BoxletSandboxService {
+  rpc CreateSandbox(CreateSandboxRequest) returns (SandboxInfo);
+  rpc PauseSandbox(PauseSandboxRequest) returns (SnapshotInfo);
+  rpc ResumeSandbox(ResumeSandboxRequest) returns (SandboxInfo);
+  rpc KillSandbox(KillSandboxRequest) returns (google.protobuf.Empty);
+  rpc StartSandbox(StartSandboxRequest) returns (SandboxInfo);
+  rpc StopSandbox(StopSandboxRequest) returns (SandboxInfo);
+  rpc RebootSandbox(RebootSandboxRequest) returns (SandboxInfo);
+  rpc GetSandbox(GetSandboxRequest) returns (SandboxInfo);
+  rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse);
+}
+
+service BoxletArtifactService {
+  rpc CreateTemplate(CreateTemplateRequest) returns (TemplateInfo);
+  rpc DeleteTemplate(DeleteTemplateRequest) returns (google.protobuf.Empty);
+  rpc GetTemplate(GetTemplateRequest) returns (TemplateInfo);
+  rpc ListTemplates(ListTemplatesRequest) returns (ListTemplatesResponse);
+  rpc CreateImage(CreateImageRequest) returns (ImageInfo);
+  rpc DeleteImage(DeleteImageRequest) returns (google.protobuf.Empty);
+  rpc GetImage(GetImageRequest) returns (ImageInfo);
+  rpc ListImages(ListImagesRequest) returns (ListImagesResponse);
+}
+
+service BoxletNodeService {
+  rpc NodeStatus(NodeStatusRequest) returns (NodeStatusInfo);
+  rpc ListRuntimes(ListRuntimesRequest) returns (ListRuntimesResponse);
+  rpc GetRuntimeCapabilities(GetRuntimeCapabilitiesRequest) returns (RuntimeCapabilities);
+}
+
+message CreateSandboxRequest {
+  string sandbox_id = 1;
+  string template_id = 2;
+  string image_id = 3;
+  string snapshot_id = 4;
+  RuntimeType runtime_type = 5;
+  RuntimeSpec runtime_spec = 6;
+  map<string, string> labels = 20;
+  map<string, string> annotations = 21;
+}
+
+message PauseSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message ResumeSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message KillSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message StartSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message StopSandboxRequest {
+  string sandbox_id = 1;
+  uint32 timeout_seconds = 2;
+}
+
+message RebootSandboxRequest {
+  string sandbox_id = 1;
+  uint32 timeout_seconds = 2;
+}
+
+message GetSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message ListSandboxesRequest {
+  map<string, string> label_selector = 1;
+}
+
+message ListSandboxesResponse {
+  repeated SandboxInfo sandboxes = 1;
+}
+
+message CreateTemplateRequest {
+  string template_id = 1;
+  string sandbox_id = 2;
+  string image_id = 3;
+  string docker_image = 4;
+  string start_cmd = 5;
+  string from_template = 6;
+  string ready_cmd = 7;
+  repeated TemplateBuildStep steps = 8;
+  map<string, string> labels = 20;
+}
+
+message TemplateBuildStep {
+  string type = 1;
+  repeated string args = 2;
+  string files_hash = 3;
+  map<string, string> env_vars = 4;
+}
+
+message DeleteTemplateRequest {
+  string template_id = 1;
+}
+
+message GetTemplateRequest {
+  string template_id = 1;
+}
+
+message ListTemplatesRequest {
+  map<string, string> label_selector = 1;
+}
+
+message ListTemplatesResponse {
+  repeated TemplateInfo templates = 1;
+}
+
+message CreateImageRequest {
+  string image_id = 1;
+  string template_id = 2;
+  string sandbox_id = 3;
+  string docker_image = 4;
+  map<string, string> labels = 20;
+}
+
+message DeleteImageRequest {
+  string image_id = 1;
+}
+
+message GetImageRequest {
+  string image_id = 1;
+}
+
+message ListImagesRequest {
+  map<string, string> label_selector = 1;
+}
+
+message ListImagesResponse {
+  repeated ImageInfo images = 1;
+}
+
+message NodeStatusRequest {}
+
+message NodeStatusInfo {
+  string node_id = 1;
+  string root_dir = 2;
+  bool ready = 3;
+  repeated RuntimeType runtime_types = 4;
+}
+
+message ListRuntimesRequest {}
+
+message RuntimeSummary {
+  RuntimeType runtime_type = 1;
+  RuntimeCapabilities capabilities = 2;
+}
+
+message ListRuntimesResponse {
+  repeated RuntimeSummary runtimes = 1;
+}
+
+message GetRuntimeCapabilitiesRequest {
+  RuntimeType runtime_type = 1;
+}

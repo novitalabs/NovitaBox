@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package novitabox.v1;
+
+option go_package = "github.com/novitalabs/NovitaBox/internal/pb/novitabox/v1;novitaboxv1";
+
+enum SandboxState {
+  SANDBOX_STATE_UNSPECIFIED = 0;
+  SANDBOX_STATE_CREATING = 1;
+  SANDBOX_STATE_RUNNING = 2;
+  SANDBOX_STATE_PAUSING = 3;
+  SANDBOX_STATE_PAUSED = 4;
+  SANDBOX_STATE_RESUMING = 5;
+  SANDBOX_STATE_STOPPING = 6;
+  SANDBOX_STATE_STOPPED = 7;
+  SANDBOX_STATE_STARTING = 8;
+  SANDBOX_STATE_REBOOTING = 9;
+  SANDBOX_STATE_KILLING = 10;
+  SANDBOX_STATE_KILLED = 11;
+  SANDBOX_STATE_FAILED = 12;
+  SANDBOX_STATE_UNKNOWN = 13;
+}
+
+enum RuntimeType {
+  RUNTIME_TYPE_UNSPECIFIED = 0;
+  RUNTIME_TYPE_FIRECRACKER = 1;
+  RUNTIME_TYPE_CLOUD_HYPERVISOR = 2;
+  RUNTIME_TYPE_CONTAINER = 3;
+}
+
+enum RuntimeState {
+  RUNTIME_STATE_UNSPECIFIED = 0;
+  RUNTIME_STATE_CREATED = 1;
+  RUNTIME_STATE_RUNNING = 2;
+  RUNTIME_STATE_PAUSED = 3;
+  RUNTIME_STATE_STOPPED = 4;
+  RUNTIME_STATE_EXITED = 5;
+  RUNTIME_STATE_FAILED = 6;
+  RUNTIME_STATE_UNKNOWN = 7;
+}
+
+message SandboxInfo {
+  string sandbox_id = 1;
+  SandboxState state = 2;
+  RuntimeType runtime_type = 3;
+  string template_id = 4;
+  string image_id = 5;
+  string snapshot_id = 6;
+  int64 created_at_unix = 7;
+  int64 updated_at_unix = 8;
+  map<string, string> labels = 20;
+  map<string, string> annotations = 21;
+}
+
+message SnapshotInfo {
+  string snapshot_id = 1;
+  string sandbox_id = 2;
+  string rootfs_path = 3;
+  string memfile_path = 4;
+  string snapfile_path = 5;
+  int64 created_at_unix = 6;
+  map<string, string> labels = 20;
+}
+
+message TemplateInfo {
+  string template_id = 1;
+  string rootfs_path = 2;
+  string memfile_path = 3;
+  string snapfile_path = 4;
+  int64 created_at_unix = 5;
+  map<string, string> labels = 20;
+}
+
+message ImageInfo {
+  string image_id = 1;
+  string rootfs_path = 2;
+  int64 created_at_unix = 3;
+  map<string, string> labels = 20;
+}
+
+message MachineSpec {
+  uint32 vcpu = 1;
+  uint32 memory_mb = 2;
+  bool hugepages = 3;
+  bool gpu = 4;
+}
+
+message KernelSpec {
+  string kernel_path = 1;
+  string init_path = 2;
+  repeated string kernel_args = 3;
+}
+
+message RootfsSpec {
+  string path = 1;
+  bool readonly = 2;
+  string format = 3;
+}
+
+message SnapshotSpec {
+  string memfile_path = 1;
+  string snapfile_path = 2;
+  string snapshot_type = 3;
+}
+
+message NetworkSpec {
+  string namespace_name = 1;
+  string tap_name = 2;
+  string guest_ip = 3;
+  string gateway_ip = 4;
+  string host_access_ip = 5;
+  string mac = 6;
+}
+
+message AgentSpec {
+  string type = 1;
+  string protocol = 2;
+  uint32 port = 3;
+  string token = 4;
+}
+
+message JailerSpec {
+  bool enabled = 1;
+  string chroot_dir = 2;
+  string uid = 3;
+  string gid = 4;
+  string cgroup_path = 5;
+  string seccomp_profile = 6;
+}
+
+message RuntimeSpec {
+  string sandbox_id = 1;
+  RuntimeType runtime_type = 2;
+  MachineSpec machine = 3;
+  KernelSpec kernel = 4;
+  RootfsSpec rootfs = 5;
+  SnapshotSpec snapshot = 6;
+  NetworkSpec network = 7;
+  AgentSpec agent = 8;
+  JailerSpec jailer = 9;
+  map<string, string> labels = 20;
+  map<string, string> annotations = 21;
+}
+
+message RuntimeInfo {
+  string sandbox_id = 1;
+  RuntimeType runtime_type = 2;
+  RuntimeState state = 3;
+  int64 pid = 4;
+  string shim_socket_path = 5;
+  string runtime_socket_path = 6;
+  string error_message = 7;
+}
+
+message RuntimeCapabilities {
+  bool start_from_image = 1;
+  bool start_from_template = 2;
+  bool start_from_snapshot = 3;
+  bool pause = 10;
+  bool resume = 11;
+  bool full_snapshot = 12;
+  bool diff_snapshot = 13;
+  bool gpu = 20;
+  bool vsock = 21;
+  bool tap_network = 22;
+  bool hotplug_disk = 23;
+  bool hotplug_network = 24;
+  bool live_resize_cpu = 25;
+  bool live_resize_memory = 26;
+  bool graceful_shutdown = 30;
+  bool serial_console = 31;
+  bool jailer = 32;
+}
