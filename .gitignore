@@ -1,0 +1,6 @@
+bin/
+.bin/
+.bufcache/
+.idea/
+.gocache/
+.gomodcache/
