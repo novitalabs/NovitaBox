@@ -22,7 +22,9 @@ import (
 	"github.com/novitalabs/NovitaBox/internal/storage/layout"
 	"github.com/novitalabs/NovitaBox/internal/storage/store"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -40,7 +42,7 @@ func newSandboxService(cfg config.Config, logger *log.Logger, store store.Store)
 func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.CreateSandboxRequest) (*novitaboxv1.SandboxInfo, error) {
 	sandboxID := req.GetSandboxId()
 	if sandboxID == "" {
-		return nil, errors.New("sandbox_id is required")
+		return nil, status.Error(codes.InvalidArgument, "sandbox_id is required")
 	}
 
 	runtimeType := req.GetRuntimeType()
@@ -94,6 +96,9 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 		SnapshotID:  req.GetSnapshotId(),
 	}
 	if err := s.store.CreateSandbox(ctx, record); err != nil {
+		if isAlreadyExistsError(err) {
+			return nil, status.Error(codes.AlreadyExists, "sandbox already exists")
+		}
 		return nil, err
 	}
 
@@ -153,6 +158,9 @@ func (s *sandboxService) ListSandboxes(ctx context.Context, _ *novitaboxv1.ListS
 func (s *sandboxService) GetSandbox(ctx context.Context, req *novitaboxv1.GetSandboxRequest) (*novitaboxv1.SandboxInfo, error) {
 	record, err := s.store.GetSandbox(ctx, req.GetSandboxId())
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "sandbox not found")
+		}
 		return nil, err
 	}
 
@@ -162,6 +170,9 @@ func (s *sandboxService) GetSandbox(ctx context.Context, req *novitaboxv1.GetSan
 func (s *sandboxService) PauseSandbox(ctx context.Context, req *novitaboxv1.PauseSandboxRequest) (*novitaboxv1.SnapshotInfo, error) {
 	record, err := s.store.GetSandbox(ctx, req.GetSandboxId())
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "sandbox not found")
+		}
 		return nil, err
 	}
 
@@ -195,6 +206,9 @@ func (s *sandboxService) PauseSandbox(ctx context.Context, req *novitaboxv1.Paus
 func (s *sandboxService) ResumeSandbox(ctx context.Context, req *novitaboxv1.ResumeSandboxRequest) (*novitaboxv1.SandboxInfo, error) {
 	record, err := s.store.GetSandbox(ctx, req.GetSandboxId())
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "sandbox not found")
+		}
 		return nil, err
 	}
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateResuming, "resume"); err != nil {
@@ -228,6 +242,9 @@ func (s *sandboxService) ResumeSandbox(ctx context.Context, req *novitaboxv1.Res
 func (s *sandboxService) KillSandbox(ctx context.Context, req *novitaboxv1.KillSandboxRequest) (*emptypb.Empty, error) {
 	record, err := s.store.GetSandbox(ctx, req.GetSandboxId())
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "sandbox not found")
+		}
 		return nil, err
 	}
 
@@ -278,6 +295,9 @@ func (s *sandboxService) StopSandbox(ctx context.Context, req *novitaboxv1.StopS
 func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.StartSandboxRequest) (*novitaboxv1.SandboxInfo, error) {
 	record, err := s.store.GetSandbox(ctx, req.GetSandboxId())
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "sandbox not found")
+		}
 		return nil, err
 	}
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateStarting, "start"); err != nil {
@@ -317,6 +337,9 @@ func (s *sandboxService) RebootSandbox(ctx context.Context, req *novitaboxv1.Reb
 func (s *sandboxService) runtimeAction(ctx context.Context, sandboxID string, transitionState sandbox.State, finalState sandbox.State, action string, call func(novitaboxv1.BoxShimClient, string) error) (*novitaboxv1.SandboxInfo, error) {
 	record, err := s.store.GetSandbox(ctx, sandboxID)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "sandbox not found")
+		}
 		return nil, err
 	}
 	if err := s.setSandboxState(ctx, record.ID, transitionState, action); err != nil {
@@ -353,13 +376,26 @@ func (s *sandboxService) dialSandboxShim(ctx context.Context, sandboxID string) 
 func (s *sandboxService) setSandboxState(ctx context.Context, sandboxID string, to sandbox.State, action string) error {
 	record, err := s.store.GetSandbox(ctx, sandboxID)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return status.Error(codes.NotFound, "sandbox not found")
+		}
 		return err
 	}
 	if record.State == to {
 		return nil
 	}
 
-	return s.store.UpdateSandboxState(ctx, sandboxID, record.State, to, action)
+	if err := s.store.UpdateSandboxState(ctx, sandboxID, record.State, to, action); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return status.Error(codes.NotFound, "sandbox not found")
+		}
+		return err
+	}
+	return nil
+}
+
+func isAlreadyExistsError(err error) bool {
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
 func (s *sandboxService) runtimeSpecForSandbox(record store.SandboxRecord) *novitaboxv1.RuntimeSpec {
@@ -388,7 +424,12 @@ func (s *sandboxService) runtimeSpecForSandbox(record store.SandboxRecord) *novi
 
 func ensureShim(ctx context.Context, cfg config.Config, socketPath string) error {
 	if _, err := os.Stat(socketPath); err == nil {
-		return nil
+		if err := waitShimReady(ctx, socketPath, 500*time.Millisecond); err == nil {
+			return nil
+		}
+		if err := os.Remove(socketPath); err != nil {
+			return fmt.Errorf("remove stale boxshim socket %q: %w", socketPath, err)
+		}
 	}
 
 	shimBin, err := resolveShimBinary(cfg.Boxshim.BinaryPath)
@@ -414,19 +455,10 @@ func ensureShim(ctx context.Context, cfg config.Config, socketPath string) error
 		return fmt.Errorf("release boxshim process: %w", err)
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(socketPath); err == nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(50 * time.Millisecond):
-		}
+	if err := waitShimReady(ctx, socketPath, 5*time.Second); err != nil {
+		return fmt.Errorf("wait for boxshim %q ready: %w", socketPath, err)
 	}
-
-	return fmt.Errorf("wait for boxshim socket %q timed out", socketPath)
+	return nil
 }
 
 func resolveShimBinary(path string) (string, error) {
@@ -457,6 +489,36 @@ func dialShim(ctx context.Context, socketPath string) (novitaboxv1.BoxShimClient
 	}
 
 	return novitaboxv1.NewBoxShimClient(conn), conn.Close, nil
+}
+
+func waitShimReady(ctx context.Context, socketPath string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		shim, closeShim, err := dialShim(ctx, socketPath)
+		if err == nil {
+			probeCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+			_, err = shim.Capabilities(probeCtx, &novitaboxv1.CapabilitiesRequest{
+				RuntimeType: novitaboxv1.RuntimeType_RUNTIME_TYPE_FIRECRACKER,
+			})
+			cancel()
+			_ = closeShim()
+			if err == nil {
+				return nil
+			}
+		}
+		lastErr = err
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("timed out after %s", timeout)
 }
 
 func sandboxRecordToProto(record store.SandboxRecord, runtimeType novitaboxv1.RuntimeType) *novitaboxv1.SandboxInfo {
@@ -732,8 +794,7 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 		},
 		Kernel: &novitaboxv1.KernelSpec{
 			KernelPath: s.cfg.Template.KernelPath,
-			InitPath:   "/novitabox/init",
-			KernelArgs: s.cfg.Template.KernelArgs,
+			KernelArgs: templateKernelArgs(s.cfg.Template.KernelArgs),
 		},
 		Rootfs: &novitaboxv1.RootfsSpec{
 			Path:   paths.RootfsPath,
@@ -765,6 +826,23 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 	}
 
 	return nil
+}
+
+func templateKernelArgs(configured []string) []string {
+	if len(configured) > 0 {
+		return configured
+	}
+	return []string{
+		"console=ttyS0",
+		"reboot=k",
+		"panic=1",
+		"pci=off",
+		"8250.nr_uarts=1",
+		"root=/dev/vda",
+		"rw",
+		"loglevel=7",
+		"init=/novitabox/init",
+	}
 }
 
 func (s *artifactService) waitTemplateRuntimeReady(ctx context.Context) error {
@@ -975,8 +1053,63 @@ func (s *artifactService) materializeDockerImage(ctx context.Context, image stri
 	return nil
 }
 
-func (s *artifactService) ListTemplates(context.Context, *novitaboxv1.ListTemplatesRequest) (*novitaboxv1.ListTemplatesResponse, error) {
-	return &novitaboxv1.ListTemplatesResponse{}, nil
+func (s *artifactService) ListTemplates(ctx context.Context, _ *novitaboxv1.ListTemplatesRequest) (*novitaboxv1.ListTemplatesResponse, error) {
+	records, err := s.store.ListTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &novitaboxv1.ListTemplatesResponse{
+		Templates: make([]*novitaboxv1.TemplateInfo, 0, len(records)),
+	}
+	for _, record := range records {
+		resp.Templates = append(resp.Templates, templateRecordToProto(record))
+	}
+
+	return resp, nil
+}
+
+func (s *artifactService) GetTemplate(ctx context.Context, req *novitaboxv1.GetTemplateRequest) (*novitaboxv1.TemplateInfo, error) {
+	if req.GetTemplateId() == "" {
+		return nil, errors.New("template_id is required")
+	}
+
+	record, err := s.store.GetTemplate(ctx, req.GetTemplateId())
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "template not found")
+		}
+		return nil, err
+	}
+
+	return templateRecordToProto(*record), nil
+}
+
+func (s *artifactService) DeleteTemplate(ctx context.Context, req *novitaboxv1.DeleteTemplateRequest) (*emptypb.Empty, error) {
+	if req.GetTemplateId() == "" {
+		return nil, errors.New("template_id is required")
+	}
+
+	record, err := s.store.GetTemplate(ctx, req.GetTemplateId())
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "template not found")
+		}
+		return nil, err
+	}
+	if err := s.store.DeleteTemplate(ctx, req.GetTemplateId()); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "template not found")
+		}
+		return nil, err
+	}
+	if record.RootfsPath != "" {
+		if err := os.RemoveAll(filepath.Dir(record.RootfsPath)); err != nil {
+			return nil, fmt.Errorf("remove template artifact directory: %w", err)
+		}
+	}
+
+	return &emptypb.Empty{}, nil
 }
 
 func (s *artifactService) ListImages(context.Context, *novitaboxv1.ListImagesRequest) (*novitaboxv1.ListImagesResponse, error) {
@@ -1047,7 +1180,7 @@ func createExt4FromDir(ctx context.Context, sourceDir string, dest string) error
 		return fmt.Errorf("remove old rootfs %q: %w", dest, err)
 	}
 
-	cmd := exec.CommandContext(ctx, "mkfs.ext4", "-d", sourceDir, "-F", dest, "2G")
+	cmd := exec.CommandContext(ctx, "mkfs.ext4", "-O", "^64bit,^metadata_csum", "-d", sourceDir, "-F", dest, "2G")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("mkfs.ext4 rootfs failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}

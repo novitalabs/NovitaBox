@@ -143,6 +143,40 @@ func TestArtifactCRUD(t *testing.T) {
 	}
 }
 
+func TestDeleteTemplateRemovesBuilds(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	defer st.Close()
+
+	if err := st.CreateTemplate(ctx, store.TemplateRecord{
+		ID:           "tpl-1",
+		RootfsPath:   "/rootfs.ext4",
+		MemfilePath:  "/memfile",
+		SnapfilePath: "/snapfile",
+	}); err != nil {
+		t.Fatalf("CreateTemplate() error = %v", err)
+	}
+	if err := st.CreateTemplateBuild(ctx, store.TemplateBuildRecord{
+		ID:         "build-1",
+		TemplateID: "tpl-1",
+		Status:     store.TemplateBuildStatusWaiting,
+	}); err != nil {
+		t.Fatalf("CreateTemplateBuild() error = %v", err)
+	}
+
+	if err := st.DeleteTemplate(ctx, "tpl-1"); err != nil {
+		t.Fatalf("DeleteTemplate() error = %v", err)
+	}
+	_, err := st.GetTemplate(ctx, "tpl-1")
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetTemplate() error = %v, want ErrNotFound", err)
+	}
+	_, err = st.GetTemplateBuild(ctx, "tpl-1", "build-1")
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetTemplateBuild() error = %v, want ErrNotFound", err)
+	}
+}
+
 func TestTemplateBuildLifecycle(t *testing.T) {
 	ctx := context.Background()
 	st := openStore(t)

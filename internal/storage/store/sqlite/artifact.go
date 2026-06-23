@@ -128,7 +128,33 @@ ORDER BY created_at DESC, template_id DESC`)
 }
 
 func (s *Store) DeleteTemplate(ctx context.Context, templateID string) error {
-	return deleteByID(ctx, s.db, "templates", "template_id", templateID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete template %q: %w", templateID, err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM template_builds WHERE template_id = ?`, templateID); err != nil {
+		return fmt.Errorf("delete template builds for %q: %w", templateID, err)
+	}
+
+	result, err := tx.ExecContext(ctx, `DELETE FROM templates WHERE template_id = ?`, templateID)
+	if err != nil {
+		return fmt.Errorf("delete template %q: %w", templateID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read delete template %q result: %w", templateID, err)
+	}
+	if affected == 0 {
+		return store.ErrNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete template %q: %w", templateID, err)
+	}
+
+	return nil
 }
 
 func (s *Store) CreateSnapshot(ctx context.Context, record store.SnapshotRecord) error {

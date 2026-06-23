@@ -15,16 +15,19 @@ import (
 	novitaboxv1 "github.com/novitalabs/NovitaBox/internal/pb/novitabox/v1"
 	"github.com/novitalabs/NovitaBox/internal/storage/layout"
 	"github.com/novitalabs/NovitaBox/internal/storage/store"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type createTemplateV3Request struct {
-	Alias    *string           `json:"alias,omitempty"`
-	CPUCount *int32            `json:"cpuCount,omitempty"`
-	MemoryMB *int32            `json:"memoryMB,omitempty"`
-	Metadata map[string]string `json:"metadata,omitempty"`
-	Name     *string           `json:"name,omitempty"`
-	Tags     *[]string         `json:"tags,omitempty"`
-	TeamID   *string           `json:"teamID,omitempty"`
+	Alias      *string           `json:"alias,omitempty"`
+	CPUCount   *int32            `json:"cpuCount,omitempty"`
+	MemoryMB   *int32            `json:"memoryMB,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+	Name       *string           `json:"name,omitempty"`
+	Tags       *[]string         `json:"tags,omitempty"`
+	TeamID     *string           `json:"teamID,omitempty"`
+	TemplateID *string           `json:"templateID,omitempty"`
 }
 
 type startTemplateBuildV2Request struct {
@@ -54,6 +57,31 @@ type templateV3Response struct {
 	TemplateID string            `json:"templateID"`
 }
 
+type templateResponse struct {
+	TemplateID    string            `json:"templateID"`
+	RootfsPath    string            `json:"rootfsPath"`
+	MemfilePath   string            `json:"memfilePath"`
+	SnapfilePath  string            `json:"snapfilePath"`
+	CreatedAtUnix int64             `json:"createdAtUnix"`
+	Labels        map[string]string `json:"labels,omitempty"`
+}
+
+type listTemplatesResponse struct {
+	Templates []templateResponse `json:"templates"`
+}
+
+type convertTemplateRequest struct {
+	TemplateID string `json:"templateID"`
+	ImageID    string `json:"imageID"`
+}
+
+type convertTemplateResponse struct {
+	ImageID       string `json:"imageID"`
+	TemplateID    string `json:"templateID"`
+	RootfsPath    string `json:"rootfsPath"`
+	CreatedAtUnix int64  `json:"createdAtUnix"`
+}
+
 func (h *Handler) CreateTemplateV3(c *gin.Context) {
 	if h.store == nil {
 		response.Error(c, response.ErrInternal("storage is not configured"))
@@ -80,9 +108,17 @@ func (h *Handler) CreateTemplateV3(c *gin.Context) {
 	name, tags := splitTemplateName(input)
 	tags = append(tags, derefStringSlice(req.Tags)...)
 
-	templateID, err := templateIDFromName(name)
-	if err != nil {
-		response.Error(c, response.ErrInternal("generate template id failed"))
+	templateID := strings.TrimSpace(derefString(req.TemplateID))
+	if templateID == "" {
+		var err error
+		templateID, err = newTemplateID()
+		if err != nil {
+			response.Error(c, response.ErrInternal("generate template id failed"))
+			return
+		}
+	}
+	if err := validateTemplateID(templateID); err != nil {
+		response.Error(c, response.ErrBadRequest(err.Error()))
 		return
 	}
 
@@ -275,24 +311,217 @@ func (h *Handler) getOrCreateTemplate(c *gin.Context, templateID string) (*store
 }
 
 func (h *Handler) ListTemplates(c *gin.Context) {
-	notImplemented(c, "list templates")
+	if h.artifactClient != nil {
+		resp, err := h.artifactClient.ListTemplates(c.Request.Context(), &novitaboxv1.ListTemplatesRequest{})
+		if err != nil {
+			h.logger.Error("list templates via boxlet failed", "error", err)
+			response.Error(c, response.ErrInternal("list templates failed"))
+			return
+		}
+		response.JSON(c, http.StatusOK, listTemplatesResponse{Templates: templateProtoListToResponse(resp.GetTemplates())})
+		return
+	}
+
+	if h.store == nil {
+		response.Error(c, response.ErrInternal("storage is not configured"))
+		return
+	}
+	records, err := h.store.ListTemplates(c.Request.Context())
+	if err != nil {
+		h.logger.Error("list templates failed", "error", err)
+		response.Error(c, response.ErrInternal("list templates failed"))
+		return
+	}
+
+	templates := make([]templateResponse, 0, len(records))
+	for _, record := range records {
+		templates = append(templates, templateRecordToResponse(record))
+	}
+	response.JSON(c, http.StatusOK, listTemplatesResponse{Templates: templates})
 }
 
 func (h *Handler) GetTemplate(c *gin.Context) {
-	notImplemented(c, "get template")
+	templateID := c.Param("template_id")
+	if err := validateTemplateID(templateID); err != nil {
+		response.Error(c, response.ErrBadRequest(err.Error()))
+		return
+	}
+
+	if h.artifactClient != nil {
+		info, err := h.artifactClient.GetTemplate(c.Request.Context(), &novitaboxv1.GetTemplateRequest{TemplateId: templateID})
+		if err != nil {
+			handleTemplateReadError(c, h, err, "get template failed")
+			return
+		}
+		response.JSON(c, http.StatusOK, templateProtoToResponse(info))
+		return
+	}
+
+	if h.store == nil {
+		response.Error(c, response.ErrInternal("storage is not configured"))
+		return
+	}
+	record, err := h.store.GetTemplate(c.Request.Context(), templateID)
+	if err != nil {
+		handleTemplateReadError(c, h, err, "get template failed")
+		return
+	}
+	response.JSON(c, http.StatusOK, templateRecordToResponse(*record))
 }
 
 func (h *Handler) DeleteTemplate(c *gin.Context) {
-	notImplemented(c, "delete template")
+	templateID := c.Param("template_id")
+	if err := validateTemplateID(templateID); err != nil {
+		response.Error(c, response.ErrBadRequest(err.Error()))
+		return
+	}
+
+	if h.artifactClient != nil {
+		if _, err := h.artifactClient.DeleteTemplate(c.Request.Context(), &novitaboxv1.DeleteTemplateRequest{TemplateId: templateID}); err != nil {
+			handleTemplateReadError(c, h, err, "delete template failed")
+			return
+		}
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	if h.store == nil {
+		response.Error(c, response.ErrInternal("storage is not configured"))
+		return
+	}
+	record, err := h.store.GetTemplate(c.Request.Context(), templateID)
+	if err != nil {
+		handleTemplateReadError(c, h, err, "delete template failed")
+		return
+	}
+	if err := h.store.DeleteTemplate(c.Request.Context(), templateID); err != nil {
+		handleTemplateReadError(c, h, err, "delete template failed")
+		return
+	}
+	if record.RootfsPath != "" {
+		if err := os.RemoveAll(filepath.Dir(record.RootfsPath)); err != nil {
+			h.logger.Error("remove template artifact directory failed", "template_id", templateID, "path", filepath.Dir(record.RootfsPath), "error", err)
+			response.Error(c, response.ErrInternal("delete template artifact failed"))
+			return
+		}
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) ConvertTemplate(c *gin.Context) {
-	notImplemented(c, "convert template")
+	if h.store == nil {
+		response.Error(c, response.ErrInternal("storage is not configured"))
+		return
+	}
+
+	var req convertTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, response.ErrBadRequest("invalid template convert request body"))
+		return
+	}
+	if err := validateTemplateID(req.TemplateID); err != nil {
+		response.Error(c, response.ErrBadRequest(err.Error()))
+		return
+	}
+
+	record, err := h.store.GetTemplate(c.Request.Context(), req.TemplateID)
+	if err != nil {
+		handleTemplateReadError(c, h, err, "get template failed")
+		return
+	}
+
+	imageID := strings.TrimSpace(req.ImageID)
+	if imageID == "" {
+		imageID = "img-" + req.TemplateID
+	}
+	if strings.Contains(imageID, "/") || strings.Contains(imageID, "\\") || strings.Contains(imageID, "..") {
+		response.Error(c, response.ErrBadRequest("imageID contains invalid path characters"))
+		return
+	}
+
+	image := store.ImageRecord{
+		ID:         imageID,
+		RootfsPath: record.RootfsPath,
+	}
+	if err := h.store.CreateImage(c.Request.Context(), image); err != nil {
+		h.logger.Error("create image from template failed", "template_id", req.TemplateID, "image_id", imageID, "error", err)
+		response.Error(c, response.ErrInternal("create image from template failed"))
+		return
+	}
+	created, err := h.store.GetImage(c.Request.Context(), imageID)
+	if err != nil {
+		h.logger.Error("get converted image failed", "image_id", imageID, "error", err)
+		response.Error(c, response.ErrInternal("get converted image failed"))
+		return
+	}
+
+	response.JSON(c, http.StatusCreated, convertTemplateResponse{
+		ImageID:       created.ID,
+		TemplateID:    req.TemplateID,
+		RootfsPath:    created.RootfsPath,
+		CreatedAtUnix: created.CreatedAt.Unix(),
+	})
 }
 
-func templateIDFromName(name string) (string, error) {
-	replacer := strings.NewReplacer("/", "-", "\\", "-", ":", "-", " ", "-")
-	return "tpl-" + replacer.Replace(name), nil
+func templateRecordToResponse(record store.TemplateRecord) templateResponse {
+	return templateResponse{
+		TemplateID:    record.ID,
+		RootfsPath:    record.RootfsPath,
+		MemfilePath:   record.MemfilePath,
+		SnapfilePath:  record.SnapfilePath,
+		CreatedAtUnix: record.CreatedAt.Unix(),
+	}
+}
+
+func templateProtoToResponse(info *novitaboxv1.TemplateInfo) templateResponse {
+	return templateResponse{
+		TemplateID:    info.GetTemplateId(),
+		RootfsPath:    info.GetRootfsPath(),
+		MemfilePath:   info.GetMemfilePath(),
+		SnapfilePath:  info.GetSnapfilePath(),
+		CreatedAtUnix: info.GetCreatedAtUnix(),
+		Labels:        info.GetLabels(),
+	}
+}
+
+func templateProtoListToResponse(infos []*novitaboxv1.TemplateInfo) []templateResponse {
+	templates := make([]templateResponse, 0, len(infos))
+	for _, info := range infos {
+		templates = append(templates, templateProtoToResponse(info))
+	}
+	return templates
+}
+
+func handleTemplateReadError(c *gin.Context, h *Handler, err error, message string) {
+	if errors.Is(err, store.ErrNotFound) {
+		response.Error(c, response.ErrNotFound("template not found"))
+		return
+	}
+	if status.Code(err) == codes.NotFound {
+		response.Error(c, response.ErrNotFound("template not found"))
+		return
+	}
+	h.logger.Error(message, "error", err)
+	response.Error(c, response.ErrInternal(message))
+}
+
+func newTemplateID() (string, error) {
+	id, err := newBuildID()
+	if err != nil {
+		return "", err
+	}
+	return "tpl-" + id, nil
+}
+
+func validateTemplateID(templateID string) error {
+	if templateID == "" {
+		return errors.New("templateID is required")
+	}
+	if strings.Contains(templateID, "/") || strings.Contains(templateID, "\\") || strings.Contains(templateID, "..") {
+		return errors.New("templateID contains invalid path characters")
+	}
+	return nil
 }
 
 func newBuildID() (string, error) {
