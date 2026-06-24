@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/novitalabs/NovitaBox/internal/config"
@@ -56,37 +57,6 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 		return nil, fmt.Errorf("create sandbox directory: %w", err)
 	}
 
-	spec := req.GetRuntimeSpec()
-	if spec == nil {
-		spec = &novitaboxv1.RuntimeSpec{}
-	}
-	spec.SandboxId = sandboxID
-	spec.RuntimeType = runtimeType
-	if spec.Rootfs == nil {
-		spec.Rootfs = &novitaboxv1.RootfsSpec{
-			Path:   filepath.Join(sandboxDir, "rootfs.ext4"),
-			Format: "ext4",
-		}
-	}
-	if spec.Snapshot == nil {
-		snapshotDir := filepath.Join(sandboxDir, "snapshot")
-		spec.Snapshot = &novitaboxv1.SnapshotSpec{
-			MemfilePath:  filepath.Join(snapshotDir, "memfile"),
-			SnapfilePath: filepath.Join(snapshotDir, "snapfile"),
-			SnapshotType: "full",
-		}
-	}
-	if err := ensureSnapshotSpecDirs(spec.Snapshot); err != nil {
-		return nil, err
-	}
-	if spec.Agent == nil {
-		spec.Agent = &novitaboxv1.AgentSpec{
-			Type:     "boxd",
-			Protocol: "grpc",
-			Port:     49983,
-		}
-	}
-
 	record := store.SandboxRecord{
 		ID:          sandboxID,
 		State:       sandbox.StateCreating,
@@ -95,10 +65,23 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 		ImageID:     req.GetImageId(),
 		SnapshotID:  req.GetSnapshotId(),
 	}
+	spec := s.completeRuntimeSpec(record, req.GetRuntimeSpec())
 	if err := s.store.CreateSandbox(ctx, record); err != nil {
 		if isAlreadyExistsError(err) {
 			return nil, status.Error(codes.AlreadyExists, "sandbox already exists")
 		}
+		return nil, err
+	}
+	if err := s.prepareSandboxRuntimeFiles(ctx, record, spec); err != nil {
+		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		return nil, err
+	}
+	if err := ensureSnapshotSpecDirs(spec.Snapshot); err != nil {
+		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		return nil, err
+	}
+	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
+		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
 		return nil, err
 	}
 
@@ -223,6 +206,10 @@ func (s *sandboxService) ResumeSandbox(ctx context.Context, req *novitaboxv1.Res
 	defer closeShim()
 
 	spec := s.runtimeSpecForSandbox(*record)
+	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
+		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		return nil, err
+	}
 	if _, err := shim.ResumeRuntime(ctx, &novitaboxv1.ResumeRuntimeRequest{RuntimeSpec: spec}); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
 		return nil, fmt.Errorf("resume runtime: %w", err)
@@ -266,6 +253,9 @@ func (s *sandboxService) KillSandbox(ctx context.Context, req *novitaboxv1.KillS
 	}
 	if err := os.RemoveAll(layout.New(s.cfg.RootDir).SandboxDir(record.ID)); err != nil {
 		return nil, fmt.Errorf("remove sandbox directory: %w", err)
+	}
+	if err := newSandboxNetworkManager(s.cfg).Cleanup(ctx, record.ID); err != nil {
+		s.logger.Warn("cleanup sandbox network failed", "sandbox_id", record.ID, "error", err)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -311,7 +301,12 @@ func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.Star
 	}
 	defer closeShim()
 
-	if _, err := shim.StartRuntime(ctx, &novitaboxv1.StartRuntimeRequest{RuntimeSpec: s.runtimeSpecForSandbox(*record)}); err != nil {
+	spec := s.runtimeSpecForSandbox(*record)
+	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
+		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		return nil, err
+	}
+	if _, err := shim.StartRuntime(ctx, &novitaboxv1.StartRuntimeRequest{RuntimeSpec: spec}); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
 		return nil, fmt.Errorf("start runtime: %w", err)
 	}
@@ -399,7 +394,8 @@ func isAlreadyExistsError(err error) bool {
 }
 
 func (s *sandboxService) runtimeSpecForSandbox(record store.SandboxRecord) *novitaboxv1.RuntimeSpec {
-	sandboxDir := layout.New(s.cfg.RootDir).SandboxDir(record.ID)
+	paths := sandboxRuntimePaths(s.cfg.RootDir, record.ID)
+	networkSpec, _ := newSandboxNetworkManager(s.cfg).Spec(record.ID)
 	return &novitaboxv1.RuntimeSpec{
 		SandboxId:   record.ID,
 		RuntimeType: runtimeTypeFromRecord(record.RuntimeType),
@@ -408,18 +404,117 @@ func (s *sandboxService) runtimeSpecForSandbox(record store.SandboxRecord) *novi
 			MemoryMb: 512,
 		},
 		Kernel: &novitaboxv1.KernelSpec{
-			KernelPath: s.cfg.Template.KernelPath,
+			KernelPath: paths.KernelPath,
+			KernelArgs: s.cfg.Template.KernelArgs,
 		},
 		Rootfs: &novitaboxv1.RootfsSpec{
-			Path:   filepath.Join(sandboxDir, "rootfs.ext4"),
+			Path:   paths.RootfsPath,
 			Format: "ext4",
 		},
 		Snapshot: &novitaboxv1.SnapshotSpec{
-			MemfilePath:  filepath.Join(sandboxDir, "snapshot", "memfile"),
-			SnapfilePath: filepath.Join(sandboxDir, "snapshot", "snapfile"),
+			MemfilePath:  paths.MemfilePath,
+			SnapfilePath: paths.SnapfilePath,
 			SnapshotType: "full",
 		},
+		Network: networkSpec,
 	}
+}
+
+func (s *sandboxService) completeRuntimeSpec(record store.SandboxRecord, spec *novitaboxv1.RuntimeSpec) *novitaboxv1.RuntimeSpec {
+	if spec == nil {
+		spec = s.runtimeSpecForSandbox(record)
+	}
+	paths := sandboxRuntimePaths(s.cfg.RootDir, record.ID)
+	spec.SandboxId = record.ID
+	spec.RuntimeType = runtimeTypeFromRecord(record.RuntimeType)
+	if spec.Machine == nil {
+		spec.Machine = &novitaboxv1.MachineSpec{
+			Vcpu:     s.cfg.Template.VCPU,
+			MemoryMb: s.cfg.Template.MemoryMB,
+		}
+	}
+	if spec.Kernel == nil {
+		spec.Kernel = &novitaboxv1.KernelSpec{}
+	}
+	if spec.Kernel.KernelPath == "" {
+		spec.Kernel.KernelPath = paths.KernelPath
+	}
+	if spec.Rootfs == nil {
+		spec.Rootfs = &novitaboxv1.RootfsSpec{
+			Path:   paths.RootfsPath,
+			Format: "ext4",
+		}
+	}
+	if spec.Rootfs.Path == "" {
+		spec.Rootfs.Path = paths.RootfsPath
+	}
+	if spec.Snapshot == nil {
+		spec.Snapshot = &novitaboxv1.SnapshotSpec{
+			MemfilePath:  paths.MemfilePath,
+			SnapfilePath: paths.SnapfilePath,
+			SnapshotType: "full",
+		}
+	}
+	if spec.Snapshot.MemfilePath == "" {
+		spec.Snapshot.MemfilePath = paths.MemfilePath
+	}
+	if spec.Snapshot.SnapfilePath == "" {
+		spec.Snapshot.SnapfilePath = paths.SnapfilePath
+	}
+	if networkSpec, err := newSandboxNetworkManager(s.cfg).Complete(record.ID, spec.Network); err == nil {
+		spec.Network = networkSpec
+	}
+	if spec.Agent == nil {
+		spec.Agent = &novitaboxv1.AgentSpec{
+			Type:     "boxd",
+			Protocol: "grpc",
+			Port:     49983,
+		}
+	}
+	return spec
+}
+
+func (s *sandboxService) prepareSandboxRuntimeFiles(ctx context.Context, record store.SandboxRecord, spec *novitaboxv1.RuntimeSpec) error {
+	if spec.GetKernel().GetKernelPath() != "" {
+		if s.cfg.Template.KernelPath == "" {
+			return errors.New("sandbox runtime requires --template-kernel")
+		}
+		if err := linkOrCopyFile(s.cfg.Template.KernelPath, spec.GetKernel().GetKernelPath()); err != nil {
+			return fmt.Errorf("prepare sandbox kernel: %w", err)
+		}
+	}
+	if record.TemplateID != "" {
+		template, err := s.store.GetTemplate(ctx, record.TemplateID)
+		if err != nil {
+			return fmt.Errorf("get template %q: %w", record.TemplateID, err)
+		}
+		if err := cloneOrCopyFile(template.RootfsPath, spec.GetRootfs().GetPath()); err != nil {
+			return fmt.Errorf("prepare sandbox rootfs from template %q: %w", record.TemplateID, err)
+		}
+		if template.MemfilePath != "" && spec.GetSnapshot().GetMemfilePath() != "" {
+			if err := cloneOrCopyFile(template.MemfilePath, spec.GetSnapshot().GetMemfilePath()); err != nil {
+				return fmt.Errorf("prepare sandbox memfile from template %q: %w", record.TemplateID, err)
+			}
+		}
+		if template.SnapfilePath != "" && spec.GetSnapshot().GetSnapfilePath() != "" {
+			if err := cloneOrCopyFile(template.SnapfilePath, spec.GetSnapshot().GetSnapfilePath()); err != nil {
+				return fmt.Errorf("prepare sandbox snapfile from template %q: %w", record.TemplateID, err)
+			}
+		}
+		return nil
+	}
+	if record.ImageID != "" {
+		image, err := s.store.GetImage(ctx, record.ImageID)
+		if err != nil {
+			return fmt.Errorf("get image %q: %w", record.ImageID, err)
+		}
+		if err := cloneOrCopyFile(image.RootfsPath, spec.GetRootfs().GetPath()); err != nil {
+			return fmt.Errorf("prepare sandbox rootfs from image %q: %w", record.ImageID, err)
+		}
+		return nil
+	}
+
+	return nil
 }
 
 func ensureShim(ctx context.Context, cfg config.Config, socketPath string) error {
@@ -443,6 +538,7 @@ func ensureShim(ctx context.Context, cfg config.Config, socketPath string) error
 		"--runtime-driver", cfg.Boxshim.RuntimeDriver,
 		"--firecracker-bin", cfg.Firecracker.BinaryPath,
 	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start boxshim: %w", err)
 	}
@@ -534,15 +630,33 @@ func sandboxRecordToProto(record store.SandboxRecord, runtimeType novitaboxv1.Ru
 	}
 }
 
-func sandboxSnapshotRecord(rootDir string, sandboxID string) store.SnapshotRecord {
+type sandboxRuntimeArtifactPaths struct {
+	KernelPath   string
+	RootfsPath   string
+	MemfilePath  string
+	SnapfilePath string
+}
+
+func sandboxRuntimePaths(rootDir string, sandboxID string) sandboxRuntimeArtifactPaths {
 	sandboxDir := layout.New(rootDir).SandboxDir(sandboxID)
+	snapshotDir := filepath.Join(sandboxDir, "snapshot")
+	return sandboxRuntimeArtifactPaths{
+		KernelPath:   filepath.Join(sandboxDir, "kernel"),
+		RootfsPath:   filepath.Join(snapshotDir, "rootfs.ext4"),
+		MemfilePath:  filepath.Join(snapshotDir, "memfile"),
+		SnapfilePath: filepath.Join(snapshotDir, "snapfile"),
+	}
+}
+
+func sandboxSnapshotRecord(rootDir string, sandboxID string) store.SnapshotRecord {
+	paths := sandboxRuntimePaths(rootDir, sandboxID)
 	now := time.Now()
 	return store.SnapshotRecord{
 		ID:           fmt.Sprintf("snap-%s-%d", sandboxID, time.Now().UnixNano()),
 		SandboxID:    sandboxID,
-		RootfsPath:   filepath.Join(sandboxDir, "rootfs.ext4"),
-		MemfilePath:  filepath.Join(sandboxDir, "snapshot", "memfile"),
-		SnapfilePath: filepath.Join(sandboxDir, "snapshot", "snapfile"),
+		RootfsPath:   paths.RootfsPath,
+		MemfilePath:  paths.MemfilePath,
+		SnapfilePath: paths.SnapfilePath,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -982,18 +1096,18 @@ func (s *artifactService) materializeTemplateRootfs(ctx context.Context, req *no
 		if err != nil {
 			return fmt.Errorf("get source template %q: %w", req.GetFromTemplate(), err)
 		}
-		return copyFile(source.RootfsPath, dest)
+		return cloneOrCopyFile(source.RootfsPath, dest)
 	case req.GetImageId() != "":
 		source, err := s.store.GetImage(ctx, req.GetImageId())
 		if err != nil {
 			return fmt.Errorf("get source image %q: %w", req.GetImageId(), err)
 		}
-		return copyFile(source.RootfsPath, dest)
+		return cloneOrCopyFile(source.RootfsPath, dest)
 	case req.GetDockerImage() != "":
 		return s.materializeDockerImage(ctx, req.GetDockerImage(), dest)
 	case req.GetSandboxId() != "":
-		source := filepath.Join(layout.New(s.cfg.RootDir).SandboxDir(req.GetSandboxId()), "rootfs.ext4")
-		return copyFile(source, dest)
+		source := sandboxRuntimePaths(s.cfg.RootDir, req.GetSandboxId()).RootfsPath
+		return cloneOrCopyFile(source, dest)
 	default:
 		return errors.New("one of from_template, image_id, docker_image, or sandbox_id is required")
 	}
@@ -1001,7 +1115,7 @@ func (s *artifactService) materializeTemplateRootfs(ctx context.Context, req *no
 
 func (s *artifactService) materializeDockerImage(ctx context.Context, image string, dest string) error {
 	if isLocalFile(image) {
-		return copyFile(image, dest)
+		return cloneOrCopyFile(image, dest)
 	}
 
 	s.logger.Info("exporting docker image to rootfs", "image", image, "dest", dest)
@@ -1112,8 +1226,129 @@ func (s *artifactService) DeleteTemplate(ctx context.Context, req *novitaboxv1.D
 	return &emptypb.Empty{}, nil
 }
 
-func (s *artifactService) ListImages(context.Context, *novitaboxv1.ListImagesRequest) (*novitaboxv1.ListImagesResponse, error) {
-	return &novitaboxv1.ListImagesResponse{}, nil
+func (s *artifactService) CreateImage(ctx context.Context, req *novitaboxv1.CreateImageRequest) (*novitaboxv1.ImageInfo, error) {
+	imageID := req.GetImageId()
+	if imageID == "" {
+		return nil, status.Error(codes.InvalidArgument, "image_id is required")
+	}
+	if _, err := s.store.GetImage(ctx, imageID); err == nil {
+		return nil, status.Error(codes.AlreadyExists, "image already exists")
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+
+	l := layout.New(s.cfg.RootDir)
+	imageDir := l.ImageDir(imageID)
+	if err := os.MkdirAll(imageDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create image directory: %w", err)
+	}
+
+	rootfsPath := filepath.Join(imageDir, "rootfs.ext4")
+	if err := s.materializeImageRootfs(ctx, req, rootfsPath); err != nil {
+		return nil, err
+	}
+
+	record := store.ImageRecord{
+		ID:         imageID,
+		RootfsPath: rootfsPath,
+	}
+	if err := s.store.CreateImage(ctx, record); err != nil {
+		if isAlreadyExistsError(err) {
+			return nil, status.Error(codes.AlreadyExists, "image already exists")
+		}
+		return nil, err
+	}
+	created, err := s.store.GetImage(ctx, imageID)
+	if err != nil {
+		return nil, err
+	}
+
+	return imageRecordToProto(*created), nil
+}
+
+func (s *artifactService) materializeImageRootfs(ctx context.Context, req *novitaboxv1.CreateImageRequest, dest string) error {
+	switch {
+	case req.GetDockerImage() != "":
+		return s.materializeDockerImage(ctx, req.GetDockerImage(), dest)
+	case req.GetTemplateId() != "":
+		record, err := s.store.GetTemplate(ctx, req.GetTemplateId())
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return status.Error(codes.NotFound, "template not found")
+			}
+			return err
+		}
+		return cloneOrCopyFile(record.RootfsPath, dest)
+	case req.GetSandboxId() != "":
+		if _, err := s.store.GetSandbox(ctx, req.GetSandboxId()); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return status.Error(codes.NotFound, "sandbox not found")
+			}
+			return err
+		}
+		return cloneOrCopyFile(sandboxRuntimePaths(s.cfg.RootDir, req.GetSandboxId()).RootfsPath, dest)
+	default:
+		return status.Error(codes.InvalidArgument, "one of template_id, sandbox_id, or docker_image is required")
+	}
+}
+
+func (s *artifactService) ListImages(ctx context.Context, _ *novitaboxv1.ListImagesRequest) (*novitaboxv1.ListImagesResponse, error) {
+	records, err := s.store.ListImages(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &novitaboxv1.ListImagesResponse{
+		Images: make([]*novitaboxv1.ImageInfo, 0, len(records)),
+	}
+	for _, record := range records {
+		resp.Images = append(resp.Images, imageRecordToProto(record))
+	}
+
+	return resp, nil
+}
+
+func (s *artifactService) GetImage(ctx context.Context, req *novitaboxv1.GetImageRequest) (*novitaboxv1.ImageInfo, error) {
+	if req.GetImageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "image_id is required")
+	}
+
+	record, err := s.store.GetImage(ctx, req.GetImageId())
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "image not found")
+		}
+		return nil, err
+	}
+
+	return imageRecordToProto(*record), nil
+}
+
+func (s *artifactService) DeleteImage(ctx context.Context, req *novitaboxv1.DeleteImageRequest) (*emptypb.Empty, error) {
+	if req.GetImageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "image_id is required")
+	}
+
+	record, err := s.store.GetImage(ctx, req.GetImageId())
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "image not found")
+		}
+		return nil, err
+	}
+	if err := s.store.DeleteImage(ctx, req.GetImageId()); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "image not found")
+		}
+		return nil, err
+	}
+	if shouldRemoveImageDir(s.cfg.RootDir, req.GetImageId(), record.RootfsPath) {
+		if err := os.RemoveAll(layout.New(s.cfg.RootDir).ImageDir(req.GetImageId())); err != nil {
+			return nil, fmt.Errorf("remove image artifact directory: %w", err)
+		}
+	}
+
+	return &emptypb.Empty{}, nil
 }
 
 type artifactPaths struct {
@@ -1139,6 +1374,9 @@ func ensureFile(path string) error {
 }
 
 func copyFile(src string, dst string) error {
+	if filepath.Clean(src) == filepath.Clean(dst) {
+		return nil
+	}
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("open source %q: %w", src, err)
@@ -1162,6 +1400,35 @@ func copyFile(src string, dst string) error {
 	}
 
 	return nil
+}
+
+func cloneOrCopyFile(src string, dst string) error {
+	if filepath.Clean(src) == filepath.Clean(dst) {
+		return nil
+	}
+	if err := reflinkFile(src, dst); err == nil {
+		return nil
+	}
+	return copyFile(src, dst)
+}
+
+func linkOrCopyFile(src string, dst string) error {
+	if src == "" {
+		return errors.New("source path is required")
+	}
+	if filepath.Clean(src) == filepath.Clean(dst) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("create destination dir: %w", err)
+	}
+	if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove existing destination %q: %w", dst, err)
+	}
+	if err := os.Symlink(src, dst); err == nil {
+		return nil
+	}
+	return cloneOrCopyFile(src, dst)
 }
 
 func isLocalFile(value string) bool {
@@ -1196,6 +1463,19 @@ func templateRecordToProto(record store.TemplateRecord) *novitaboxv1.TemplateInf
 		SnapfilePath:  record.SnapfilePath,
 		CreatedAtUnix: record.CreatedAt.Unix(),
 	}
+}
+
+func imageRecordToProto(record store.ImageRecord) *novitaboxv1.ImageInfo {
+	return &novitaboxv1.ImageInfo{
+		ImageId:       record.ID,
+		RootfsPath:    record.RootfsPath,
+		CreatedAtUnix: record.CreatedAt.Unix(),
+	}
+}
+
+func shouldRemoveImageDir(rootDir string, imageID string, rootfsPath string) bool {
+	imageDir := layout.New(rootDir).ImageDir(imageID)
+	return rootfsPath == "" || filepath.Dir(rootfsPath) == imageDir
 }
 
 type nodeService struct {

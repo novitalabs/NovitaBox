@@ -13,6 +13,7 @@ type Config struct {
 	Storage     StorageConfig
 	Firecracker FirecrackerConfig
 	Template    TemplateBuildConfig
+	Network     NetworkConfig
 }
 
 type ServiceConfig struct {
@@ -31,6 +32,15 @@ type StorageConfig struct {
 
 type FirecrackerConfig struct {
 	BinaryPath string
+}
+
+type NetworkConfig struct {
+	Enabled        bool
+	HostAccessCIDR string
+	VethCIDR       string
+	GuestIP        string
+	GatewayIP      string
+	GuestMAC       string
 }
 
 type TemplateBuildConfig struct {
@@ -55,9 +65,17 @@ func Default() Config {
 		Boxlet:      ServiceConfig{Addr: "127.0.0.1:8081"},
 		BoxProxy:    ServiceConfig{Addr: "127.0.0.1:8082"},
 		Boxshim:     ShimConfig{RuntimeDriver: "stub", BinaryPath: "boxshim"},
-		Boxd:        ServiceConfig{Addr: "10.88.0.2:49983"},
+		Boxd:        ServiceConfig{Addr: "169.254.0.21:49983"},
 		Storage:     StorageConfig{},
 		Firecracker: FirecrackerConfig{BinaryPath: "firecracker"},
+		Network: NetworkConfig{
+			Enabled:        true,
+			HostAccessCIDR: "10.11.0.0/16",
+			VethCIDR:       "10.12.0.0/16",
+			GuestIP:        "169.254.0.21",
+			GatewayIP:      "169.254.0.22",
+			GuestMAC:       "02:FC:00:00:00:05",
+		},
 		Template: TemplateBuildConfig{
 			SnapshotEnabled:  false,
 			SnapshotWaitSecs: 3,

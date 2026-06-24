@@ -97,6 +97,17 @@ CREATE TABLE state_transitions (
 CREATE INDEX idx_state_transitions_resource ON state_transitions(resource_type, resource_id);
 `,
 	},
+	{
+		version: 2,
+		sql: `
+ALTER TABLE templates ADD COLUMN aliases_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE templates ADD COLUMN names_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE templates ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE templates ADD COLUMN public INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE templates ADD COLUMN cpu_count INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE templates ADD COLUMN memory_mb INTEGER NOT NULL DEFAULT 512;
+`,
+	},
 }
 
 func (s *Store) migrate(ctx context.Context) error {

@@ -26,6 +26,12 @@ func main() {
 		TemplateAgentWait:     defaults.Template.AgentWaitSecs,
 		TemplateBoxdGuestPath: defaults.Template.BoxdGuestPath,
 		TemplateBoxdGuestAddr: defaults.Template.BoxdGuestAddr,
+		NetworkEnabled:        defaults.Network.Enabled,
+		NetworkHostAccessCIDR: defaults.Network.HostAccessCIDR,
+		NetworkVethCIDR:       defaults.Network.VethCIDR,
+		NetworkGuestIP:        defaults.Network.GuestIP,
+		NetworkGatewayIP:      defaults.Network.GatewayIP,
+		NetworkGuestMAC:       defaults.Network.GuestMAC,
 	}
 
 	cmd := &cobra.Command{
@@ -56,6 +62,12 @@ func main() {
 	cmd.Flags().StringVar(&opts.TemplateBoxdBinary, "template-boxd-bin", opts.TemplateBoxdBinary, "host boxd binary path injected into template rootfs")
 	cmd.Flags().StringVar(&opts.TemplateBoxdGuestPath, "template-boxd-guest-path", opts.TemplateBoxdGuestPath, "guest path for injected boxd binary")
 	cmd.Flags().StringVar(&opts.TemplateBoxdGuestAddr, "template-boxd-guest-addr", opts.TemplateBoxdGuestAddr, "guest listen address for injected boxd")
+	cmd.Flags().BoolVar(&opts.NetworkEnabled, "network", opts.NetworkEnabled, "prepare sandbox network namespace and tap network")
+	cmd.Flags().StringVar(&opts.NetworkHostAccessCIDR, "network-host-access-cidr", opts.NetworkHostAccessCIDR, "CIDR used to allocate per-sandbox host access IPs")
+	cmd.Flags().StringVar(&opts.NetworkVethCIDR, "network-veth-cidr", opts.NetworkVethCIDR, "CIDR used to allocate host/netns veth pairs")
+	cmd.Flags().StringVar(&opts.NetworkGuestIP, "network-guest-ip", opts.NetworkGuestIP, "fixed guest IP used inside each sandbox")
+	cmd.Flags().StringVar(&opts.NetworkGatewayIP, "network-gateway-ip", opts.NetworkGatewayIP, "fixed gateway IP used inside each sandbox network namespace")
+	cmd.Flags().StringVar(&opts.NetworkGuestMAC, "network-guest-mac", opts.NetworkGuestMAC, "fixed guest MAC address used by Firecracker network interface")
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "boxlet: %v\n", err)

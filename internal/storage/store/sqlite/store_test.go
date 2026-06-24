@@ -209,6 +209,24 @@ func TestTemplateBuildLifecycle(t *testing.T) {
 	if build.Status != store.TemplateBuildStatusBuilding {
 		t.Fatalf("build status = %q, want %q", build.Status, store.TemplateBuildStatusBuilding)
 	}
+
+	if err := st.CreateTemplateBuild(ctx, store.TemplateBuildRecord{
+		ID:         "build-2",
+		TemplateID: "tpl-1",
+		Status:     store.TemplateBuildStatusReady,
+	}); err != nil {
+		t.Fatalf("CreateTemplateBuild(build-2) error = %v", err)
+	}
+	builds, err := st.ListTemplateBuilds(ctx, "tpl-1")
+	if err != nil {
+		t.Fatalf("ListTemplateBuilds() error = %v", err)
+	}
+	if len(builds) != 2 {
+		t.Fatalf("len(builds) = %d, want 2", len(builds))
+	}
+	if builds[0].ID != "build-2" || builds[1].ID != "build-1" {
+		t.Fatalf("build order = %#v, want build-2 then build-1", builds)
+	}
 }
 
 func openStore(t *testing.T) *sqlite.Store {

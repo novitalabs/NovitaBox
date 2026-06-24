@@ -33,6 +33,12 @@ type TemplateRecord struct {
 	RootfsPath   string
 	MemfilePath  string
 	SnapfilePath string
+	Aliases      []string
+	Names        []string
+	Metadata     map[string]string
+	Public       bool
+	CPUCount     int32
+	MemoryMB     int32
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -95,6 +101,8 @@ type Store interface {
 
 	CreateTemplateBuild(ctx context.Context, record TemplateBuildRecord) error
 	GetTemplateBuild(ctx context.Context, templateID string, buildID string) (*TemplateBuildRecord, error)
+	GetLatestTemplateBuild(ctx context.Context, templateID string) (*TemplateBuildRecord, error)
+	ListTemplateBuilds(ctx context.Context, templateID string) ([]TemplateBuildRecord, error)
 	UpdateTemplateBuildStatus(ctx context.Context, templateID string, buildID string, from TemplateBuildStatus, to TemplateBuildStatus) error
 
 	CreateSnapshot(ctx context.Context, record SnapshotRecord) error

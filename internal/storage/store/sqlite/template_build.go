@@ -41,6 +41,48 @@ WHERE template_id = ? AND build_id = ?`, templateID, buildID)
 	return &record, nil
 }
 
+func (s *Store) GetLatestTemplateBuild(ctx context.Context, templateID string) (*store.TemplateBuildRecord, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT build_id, template_id, status, created_at, updated_at
+FROM template_builds
+WHERE template_id = ?
+ORDER BY created_at DESC, build_id DESC
+LIMIT 1`, templateID)
+
+	record, err := scanTemplateBuild(row)
+	if err != nil {
+		return nil, err
+	}
+
+	return &record, nil
+}
+
+func (s *Store) ListTemplateBuilds(ctx context.Context, templateID string) ([]store.TemplateBuildRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT build_id, template_id, status, created_at, updated_at
+FROM template_builds
+WHERE template_id = ?
+ORDER BY created_at DESC, build_id DESC`, templateID)
+	if err != nil {
+		return nil, fmt.Errorf("list template builds for %q: %w", templateID, err)
+	}
+	defer rows.Close()
+
+	var records []store.TemplateBuildRecord
+	for rows.Next() {
+		record, err := scanTemplateBuild(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate template builds for %q: %w", templateID, err)
+	}
+
+	return records, nil
+}
+
 func (s *Store) UpdateTemplateBuildStatus(ctx context.Context, templateID string, buildID string, from store.TemplateBuildStatus, to store.TemplateBuildStatus) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE template_builds

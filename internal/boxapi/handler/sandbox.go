@@ -2,11 +2,11 @@ package handler
 
 import (
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,7 +34,6 @@ type createSandboxRequest struct {
 	Timeout             *int32            `json:"timeout,omitempty"`
 	VolumeMounts        *[]map[string]any `json:"volumeMounts,omitempty"`
 
-	SandboxID   string `json:"sandbox_id,omitempty"`
 	ImageID     string `json:"image_id,omitempty"`
 	SnapshotID  string `json:"snapshot_id,omitempty"`
 	RuntimeType string `json:"runtime_type,omitempty"`
@@ -95,14 +94,10 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 		return
 	}
 
-	sandboxID := req.SandboxID
-	if sandboxID == "" {
-		var err error
-		sandboxID, err = newSandboxID()
-		if err != nil {
-			response.Error(c, response.ErrInternal("generate sandbox id failed"))
-			return
-		}
+	sandboxID, err := newSandboxID()
+	if err != nil {
+		response.Error(c, response.ErrInternal("generate sandbox id failed"))
+		return
 	}
 
 	if existing, err := h.store.GetSandbox(c.Request.Context(), sandboxID); err == nil && existing != nil {
@@ -359,12 +354,16 @@ func (h *Handler) RebootSandbox(c *gin.Context) {
 }
 
 func newSandboxID() (string, error) {
-	var b [8]byte
+	const alphabet = "abcdefghijklmnopqrstuvwxyz1234567890"
+	var b [20]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err
 	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
 
-	return "sbx-" + hex.EncodeToString(b[:]), nil
+	return "i" + string(b[:]), nil
 }
 
 func sandboxRecordResponse(record store.SandboxRecord) sandboxResponse {
@@ -454,7 +453,13 @@ func (h *Handler) respondSandboxBoxletError(c *gin.Context, err error, fallbackM
 	case codes.InvalidArgument:
 		response.Error(c, response.ErrBadRequest(status.Convert(err).Message()))
 	default:
-		response.Error(c, response.ErrInternal(fallbackMessage))
+		message := fallbackMessage
+		if status.Convert(err).Message() != "" {
+			message += ": " + status.Convert(err).Message()
+		} else if err != nil {
+			message += ": " + err.Error()
+		}
+		response.Error(c, response.ErrInternal(message))
 	}
 }
 
@@ -494,15 +499,31 @@ func (h *Handler) deleteLocalSandboxSnapshots(c *gin.Context, sandboxID string) 
 
 func (h *Handler) localSnapshotRecord(sandboxID string) store.SnapshotRecord {
 	now := time.Now()
-	sandboxDir := layout.New(h.cfg.RootDir).SandboxDir(sandboxID)
+	paths := localSandboxRuntimePaths(h.cfg.RootDir, sandboxID)
 	return store.SnapshotRecord{
 		ID:           fmt.Sprintf("snap-%s-%d", sandboxID, time.Now().UnixNano()),
 		SandboxID:    sandboxID,
-		RootfsPath:   sandboxDir + "/rootfs.ext4",
-		MemfilePath:  sandboxDir + "/snapshot/memfile",
-		SnapfilePath: sandboxDir + "/snapshot/snapfile",
+		RootfsPath:   paths.RootfsPath,
+		MemfilePath:  paths.MemfilePath,
+		SnapfilePath: paths.SnapfilePath,
 		CreatedAt:    now,
 		UpdatedAt:    now,
+	}
+}
+
+type localSandboxArtifactPaths struct {
+	RootfsPath   string
+	MemfilePath  string
+	SnapfilePath string
+}
+
+func localSandboxRuntimePaths(rootDir string, sandboxID string) localSandboxArtifactPaths {
+	sandboxDir := layout.New(rootDir).SandboxDir(sandboxID)
+	snapshotDir := filepath.Join(sandboxDir, "snapshot")
+	return localSandboxArtifactPaths{
+		RootfsPath:   filepath.Join(snapshotDir, "rootfs.ext4"),
+		MemfilePath:  filepath.Join(snapshotDir, "memfile"),
+		SnapfilePath: filepath.Join(snapshotDir, "snapfile"),
 	}
 }
 
