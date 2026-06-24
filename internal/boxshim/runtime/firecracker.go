@@ -128,13 +128,22 @@ func (d *FirecrackerDriver) Pause(ctx context.Context, sandboxID string) (*novit
 		return nil, d.withLogTail(fmt.Errorf("pause firecracker vm: %w", err))
 	}
 
+	paths, err := prepareAtomicSnapshotPaths(d.spec.GetSnapshot().GetMemfilePath(), d.spec.GetSnapshot().GetSnapfilePath())
+	if err != nil {
+		return nil, err
+	}
+	defer paths.cleanup()
+
 	req := firecrackerSnapshotCreateRequest{
 		SnapshotType: "Full",
-		SnapshotPath: d.spec.GetSnapshot().GetSnapfilePath(),
-		MemFilePath:  d.spec.GetSnapshot().GetMemfilePath(),
+		SnapshotPath: paths.tmpSnapfilePath,
+		MemFilePath:  paths.tmpMemfilePath,
 	}
 	if err := d.client.put(ctx, "/snapshot/create", req); err != nil {
 		return nil, d.withLogTail(fmt.Errorf("create firecracker snapshot: %w", err))
+	}
+	if err := paths.commit(); err != nil {
+		return nil, fmt.Errorf("commit firecracker snapshot files: %w", err)
 	}
 	if err := d.killLocked(); err != nil {
 		return nil, err
@@ -144,6 +153,118 @@ func (d *FirecrackerDriver) Pause(ctx context.Context, sandboxID string) (*novit
 	d.info.Pid = 0
 	d.info.ErrorMessage = ""
 	return cloneRuntimeInfo(d.info), nil
+}
+
+type atomicSnapshotPaths struct {
+	memfilePath     string
+	snapfilePath    string
+	tmpMemfilePath  string
+	tmpSnapfilePath string
+	oldMemfilePath  string
+	oldSnapfilePath string
+	committed       bool
+}
+
+func prepareAtomicSnapshotPaths(memfilePath string, snapfilePath string) (*atomicSnapshotPaths, error) {
+	if err := os.MkdirAll(filepath.Dir(memfilePath), 0o755); err != nil {
+		return nil, fmt.Errorf("create memfile directory: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(snapfilePath), 0o755); err != nil {
+		return nil, fmt.Errorf("create snapfile directory: %w", err)
+	}
+
+	suffix := fmt.Sprintf(".tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
+	paths := &atomicSnapshotPaths{
+		memfilePath:     memfilePath,
+		snapfilePath:    snapfilePath,
+		tmpMemfilePath:  memfilePath + suffix,
+		tmpSnapfilePath: snapfilePath + suffix,
+		oldMemfilePath:  memfilePath + ".old" + suffix,
+		oldSnapfilePath: snapfilePath + ".old" + suffix,
+	}
+	for _, path := range []string{paths.tmpMemfilePath, paths.tmpSnapfilePath, paths.oldMemfilePath, paths.oldSnapfilePath} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("remove stale temporary snapshot file %q: %w", path, err)
+		}
+	}
+
+	return paths, nil
+}
+
+func (p *atomicSnapshotPaths) commit() error {
+	for _, path := range []string{p.tmpMemfilePath, p.tmpSnapfilePath} {
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("snapshot temporary file %q is not ready: %w", path, err)
+		}
+	}
+
+	memHadOld, err := moveIfExists(p.memfilePath, p.oldMemfilePath)
+	if err != nil {
+		return fmt.Errorf("backup memfile %q: %w", p.memfilePath, err)
+	}
+	snapHadOld, err := moveIfExists(p.snapfilePath, p.oldSnapfilePath)
+	if err != nil {
+		rollbackAtomicMove(p.oldMemfilePath, p.memfilePath, memHadOld)
+		return fmt.Errorf("backup snapfile %q: %w", p.snapfilePath, err)
+	}
+
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		rollbackAtomicMove(p.oldMemfilePath, p.memfilePath, memHadOld)
+		rollbackAtomicMove(p.oldSnapfilePath, p.snapfilePath, snapHadOld)
+	}()
+
+	if err := os.Rename(p.tmpMemfilePath, p.memfilePath); err != nil {
+		return fmt.Errorf("rename memfile %q to %q: %w", p.tmpMemfilePath, p.memfilePath, err)
+	}
+	if err := os.Rename(p.tmpSnapfilePath, p.snapfilePath); err != nil {
+		return fmt.Errorf("rename snapfile %q to %q: %w", p.tmpSnapfilePath, p.snapfilePath, err)
+	}
+	committed = true
+	p.committed = true
+	removeIfExists(p.oldMemfilePath)
+	removeIfExists(p.oldSnapfilePath)
+	return nil
+}
+
+func (p *atomicSnapshotPaths) cleanup() {
+	if p.committed {
+		return
+	}
+	_ = os.Remove(p.tmpMemfilePath)
+	_ = os.Remove(p.tmpSnapfilePath)
+	_ = os.Remove(p.oldMemfilePath)
+	_ = os.Remove(p.oldSnapfilePath)
+}
+
+func moveIfExists(src string, dst string) (bool, error) {
+	if _, err := os.Stat(src); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := os.Rename(src, dst); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func rollbackAtomicMove(src string, dst string, shouldRollback bool) {
+	if !shouldRollback {
+		return
+	}
+	_ = os.Remove(dst)
+	_ = os.Rename(src, dst)
+}
+
+func removeIfExists(path string) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return
+	}
 }
 
 func (d *FirecrackerDriver) Resume(ctx context.Context, spec *novitaboxv1.RuntimeSpec) (*novitaboxv1.RuntimeInfo, error) {
@@ -366,9 +487,10 @@ func (d *FirecrackerDriver) startFirecrackerLocked(spec *novitaboxv1.RuntimeSpec
 		return nil, "", fmt.Errorf("open firecracker log: %w", err)
 	}
 
-	cmd := exec.Command(d.cfg.Firecracker.BinaryPath, "--api-sock", apiSocket)
+	cmd := firecrackerCommand(d.cfg.Firecracker.BinaryPath, apiSocket, spec.GetNetwork())
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
 		return nil, "", fmt.Errorf("start firecracker: %w", err)
@@ -388,6 +510,15 @@ func (d *FirecrackerDriver) startFirecrackerLocked(spec *novitaboxv1.RuntimeSpec
 	d.logPath = logPath
 
 	return cmd, apiSocket, nil
+}
+
+func firecrackerCommand(binaryPath string, apiSocket string, network *novitaboxv1.NetworkSpec) *exec.Cmd {
+	args := []string{"--api-sock", apiSocket}
+	if network == nil || network.GetNamespaceName() == "" {
+		return exec.Command(binaryPath, args...)
+	}
+	netnsArgs := append([]string{"netns", "exec", network.GetNamespaceName(), binaryPath}, args...)
+	return exec.Command("ip", netnsArgs...)
 }
 
 func (d *FirecrackerDriver) checkProcessAliveLocked() error {
@@ -608,12 +739,15 @@ func validateFirecrackerSpec(spec *novitaboxv1.RuntimeSpec) error {
 }
 
 func bootArgs(spec *novitaboxv1.RuntimeSpec) string {
-	args := spec.GetKernel().GetKernelArgs()
+	args := append([]string(nil), spec.GetKernel().GetKernelArgs()...)
 	if len(args) == 0 {
 		args = []string{"reboot=k", "panic=1", "pci=off", "8250.nr_uarts=0", "root=/dev/vda", "rw", "quiet", "loglevel=0"}
 	}
 	if spec.GetKernel().GetInitPath() != "" && !hasKernelArg(args, "init=") {
 		args = append(args, "init="+spec.GetKernel().GetInitPath())
+	}
+	if ipArg := networkKernelIPArg(spec.GetNetwork()); ipArg != "" && !hasKernelArg(args, "ip=") {
+		args = append(args, ipArg)
 	}
 	return joinArgs(args)
 }
@@ -625,6 +759,13 @@ func hasKernelArg(args []string, prefix string) bool {
 		}
 	}
 	return false
+}
+
+func networkKernelIPArg(network *novitaboxv1.NetworkSpec) string {
+	if network == nil || network.GetGuestIp() == "" || network.GetGatewayIp() == "" {
+		return ""
+	}
+	return fmt.Sprintf("ip=%s::%s:255.255.255.252::eth0:off", network.GetGuestIp(), network.GetGatewayIp())
 }
 
 func joinArgs(args []string) string {

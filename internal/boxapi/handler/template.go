@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -57,18 +59,60 @@ type templateV3Response struct {
 	TemplateID string            `json:"templateID"`
 }
 
-type templateResponse struct {
+type compatibleTemplateResponse struct {
+	Aliases       []string          `json:"aliases"`
+	BuildCount    int32             `json:"buildCount"`
+	BuildID       string            `json:"buildID"`
+	BuildStatus   string            `json:"buildStatus"`
+	CPUCount      int32             `json:"cpuCount"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	CreatedBy     *teamUserResponse `json:"createdBy"`
+	DiskSizeMB    int64             `json:"diskSizeMB"`
+	EnvdVersion   string            `json:"envdVersion"`
+	LastSpawnedAt *time.Time        `json:"lastSpawnedAt"`
+	MemoryMB      int32             `json:"memoryMB"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	Names         []string          `json:"names"`
+	Public        bool              `json:"public"`
+	SpawnCount    int64             `json:"spawnCount"`
 	TemplateID    string            `json:"templateID"`
-	RootfsPath    string            `json:"rootfsPath"`
-	MemfilePath   string            `json:"memfilePath"`
-	SnapfilePath  string            `json:"snapfilePath"`
-	CreatedAtUnix int64             `json:"createdAtUnix"`
-	Labels        map[string]string `json:"labels,omitempty"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
 }
 
-type listTemplatesResponse struct {
-	Templates []templateResponse `json:"templates"`
+type compatibleTemplateWithBuildsResponse struct {
+	Aliases       []string                          `json:"aliases"`
+	Builds        []compatibleTemplateBuildResponse `json:"builds"`
+	CreatedAt     time.Time                         `json:"createdAt"`
+	LastSpawnedAt *time.Time                        `json:"lastSpawnedAt"`
+	Metadata      map[string]string                 `json:"metadata,omitempty"`
+	Names         []string                          `json:"names"`
+	Public        bool                              `json:"public"`
+	SpawnCount    int64                             `json:"spawnCount"`
+	TemplateID    string                            `json:"templateID"`
+	UpdatedAt     time.Time                         `json:"updatedAt"`
 }
+
+type compatibleTemplateBuildResponse struct {
+	BuildID     string     `json:"buildID"`
+	CPUCount    int32      `json:"cpuCount"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	DiskSizeMB  *int64     `json:"diskSizeMB,omitempty"`
+	EnvdVersion *string    `json:"envdVersion,omitempty"`
+	FinishedAt  *time.Time `json:"finishedAt,omitempty"`
+	MemoryMB    int32      `json:"memoryMB"`
+	Status      string     `json:"status"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+}
+
+type teamUserResponse struct {
+	Email string `json:"email,omitempty"`
+	ID    string `json:"id,omitempty"`
+}
+
+const (
+	defaultTemplateCPUCount = int32(1)
+	defaultTemplateMemoryMB = int32(512)
+)
 
 type convertTemplateRequest struct {
 	TemplateID string `json:"templateID"`
@@ -122,7 +166,20 @@ func (h *Handler) CreateTemplateV3(c *gin.Context) {
 		return
 	}
 
-	created, err := h.getOrCreateTemplate(c, templateID)
+	record := newTemplateRecord(h.cfg.RootDir, templateID)
+	record.Aliases = []string{name}
+	record.Names = []string{name}
+	record.Metadata = req.Metadata
+	record.CPUCount = defaultTemplateCPUCount
+	if req.CPUCount != nil && *req.CPUCount > 0 {
+		record.CPUCount = *req.CPUCount
+	}
+	record.MemoryMB = defaultTemplateMemoryMB
+	if req.MemoryMB != nil && *req.MemoryMB > 0 {
+		record.MemoryMB = *req.MemoryMB
+	}
+
+	created, err := h.getOrCreateTemplate(c, record)
 	if err != nil {
 		response.Error(c, response.ErrInternal("create template failed"))
 		return
@@ -283,8 +340,8 @@ func derefString(value *string) string {
 	return *value
 }
 
-func (h *Handler) getOrCreateTemplate(c *gin.Context, templateID string) (*store.TemplateRecord, error) {
-	created, err := h.store.GetTemplate(c.Request.Context(), templateID)
+func (h *Handler) getOrCreateTemplate(c *gin.Context, record store.TemplateRecord) (*store.TemplateRecord, error) {
+	created, err := h.store.GetTemplate(c.Request.Context(), record.ID)
 	if err == nil {
 		return created, nil
 	}
@@ -292,33 +349,26 @@ func (h *Handler) getOrCreateTemplate(c *gin.Context, templateID string) (*store
 		return nil, err
 	}
 
-	paths := templatePaths(h.cfg.RootDir, templateID)
-	if err := os.MkdirAll(layout.New(h.cfg.RootDir).TemplateDir(templateID), 0o755); err != nil {
+	if err := os.MkdirAll(layout.New(h.cfg.RootDir).TemplateDir(record.ID), 0o755); err != nil {
 		return nil, err
 	}
 
-	record := store.TemplateRecord{
-		ID:           templateID,
-		RootfsPath:   paths.RootfsPath,
-		MemfilePath:  paths.MemfilePath,
-		SnapfilePath: paths.SnapfilePath,
-	}
 	if err := h.store.CreateTemplate(c.Request.Context(), record); err != nil {
 		return nil, err
 	}
 
-	return h.store.GetTemplate(c.Request.Context(), templateID)
+	return h.store.GetTemplate(c.Request.Context(), record.ID)
 }
 
 func (h *Handler) ListTemplates(c *gin.Context) {
-	if h.artifactClient != nil {
+	if h.store == nil && h.artifactClient != nil {
 		resp, err := h.artifactClient.ListTemplates(c.Request.Context(), &novitaboxv1.ListTemplatesRequest{})
 		if err != nil {
 			h.logger.Error("list templates via boxlet failed", "error", err)
 			response.Error(c, response.ErrInternal("list templates failed"))
 			return
 		}
-		response.JSON(c, http.StatusOK, listTemplatesResponse{Templates: templateProtoListToResponse(resp.GetTemplates())})
+		response.JSON(c, http.StatusOK, templateProtoListToCompatibleResponse(resp.GetTemplates()))
 		return
 	}
 
@@ -333,11 +383,11 @@ func (h *Handler) ListTemplates(c *gin.Context) {
 		return
 	}
 
-	templates := make([]templateResponse, 0, len(records))
+	templates := make([]compatibleTemplateResponse, 0, len(records))
 	for _, record := range records {
-		templates = append(templates, templateRecordToResponse(record))
+		templates = append(templates, h.templateRecordToCompatibleResponse(c.Request.Context(), record))
 	}
-	response.JSON(c, http.StatusOK, listTemplatesResponse{Templates: templates})
+	response.JSON(c, http.StatusOK, templates)
 }
 
 func (h *Handler) GetTemplate(c *gin.Context) {
@@ -347,13 +397,13 @@ func (h *Handler) GetTemplate(c *gin.Context) {
 		return
 	}
 
-	if h.artifactClient != nil {
+	if h.store == nil && h.artifactClient != nil {
 		info, err := h.artifactClient.GetTemplate(c.Request.Context(), &novitaboxv1.GetTemplateRequest{TemplateId: templateID})
 		if err != nil {
 			handleTemplateReadError(c, h, err, "get template failed")
 			return
 		}
-		response.JSON(c, http.StatusOK, templateProtoToResponse(info))
+		response.JSON(c, http.StatusOK, templateProtoToCompatibleDetailResponse(info))
 		return
 	}
 
@@ -366,7 +416,7 @@ func (h *Handler) GetTemplate(c *gin.Context) {
 		handleTemplateReadError(c, h, err, "get template failed")
 		return
 	}
-	response.JSON(c, http.StatusOK, templateRecordToResponse(*record))
+	response.JSON(c, http.StatusOK, h.templateRecordToCompatibleDetailResponse(c.Request.Context(), *record))
 }
 
 func (h *Handler) DeleteTemplate(c *gin.Context) {
@@ -464,33 +514,216 @@ func (h *Handler) ConvertTemplate(c *gin.Context) {
 	})
 }
 
-func templateRecordToResponse(record store.TemplateRecord) templateResponse {
-	return templateResponse{
+func (h *Handler) templateRecordToCompatibleResponse(ctx context.Context, record store.TemplateRecord) compatibleTemplateResponse {
+	builds := h.templateBuilds(ctx, record.ID)
+	latest := latestTemplateBuild(builds)
+	diskSizeMB := templateDiskSizeMB(record)
+
+	return compatibleTemplateResponse{
+		Aliases:       record.Aliases,
+		BuildCount:    int32(len(builds)),
+		BuildID:       latestBuildID(latest),
+		BuildStatus:   latestBuildStatus(latest, record),
+		CPUCount:      templateCPUCount(record),
+		CreatedAt:     record.CreatedAt,
+		CreatedBy:     nil,
+		DiskSizeMB:    diskSizeMB,
+		EnvdVersion:   "",
+		LastSpawnedAt: nil,
+		MemoryMB:      templateMemoryMB(record),
+		Metadata:      emptyMapAsNil(record.Metadata),
+		Names:         record.Names,
+		Public:        record.Public,
+		SpawnCount:    0,
 		TemplateID:    record.ID,
-		RootfsPath:    record.RootfsPath,
-		MemfilePath:   record.MemfilePath,
-		SnapfilePath:  record.SnapfilePath,
-		CreatedAtUnix: record.CreatedAt.Unix(),
+		UpdatedAt:     record.UpdatedAt,
 	}
 }
 
-func templateProtoToResponse(info *novitaboxv1.TemplateInfo) templateResponse {
-	return templateResponse{
+func (h *Handler) templateRecordToCompatibleDetailResponse(ctx context.Context, record store.TemplateRecord) compatibleTemplateWithBuildsResponse {
+	builds := h.templateBuilds(ctx, record.ID)
+
+	return compatibleTemplateWithBuildsResponse{
+		Aliases:       record.Aliases,
+		Builds:        templateBuildRecordsToCompatibleResponse(builds, templateDiskSizeMB(record), templateCPUCount(record), templateMemoryMB(record)),
+		CreatedAt:     record.CreatedAt,
+		LastSpawnedAt: nil,
+		Metadata:      emptyMapAsNil(record.Metadata),
+		Names:         record.Names,
+		Public:        record.Public,
+		SpawnCount:    0,
+		TemplateID:    record.ID,
+		UpdatedAt:     record.UpdatedAt,
+	}
+}
+
+func (h *Handler) templateBuilds(ctx context.Context, templateID string) []store.TemplateBuildRecord {
+	if h.store == nil {
+		return nil
+	}
+	builds, err := h.store.ListTemplateBuilds(ctx, templateID)
+	if err != nil {
+		h.logger.Warn("list template builds failed", "template_id", templateID, "error", err)
+		return nil
+	}
+	return builds
+}
+
+func templateProtoToCompatibleResponse(info *novitaboxv1.TemplateInfo) compatibleTemplateResponse {
+	record := store.TemplateRecord{
+		ID:           info.GetTemplateId(),
+		RootfsPath:   info.GetRootfsPath(),
+		MemfilePath:  info.GetMemfilePath(),
+		SnapfilePath: info.GetSnapfilePath(),
+		CreatedAt:    time.Unix(info.GetCreatedAtUnix(), 0).UTC(),
+		UpdatedAt:    time.Unix(info.GetCreatedAtUnix(), 0).UTC(),
+	}
+	return compatibleTemplateResponse{
+		Aliases:       []string{},
+		BuildCount:    0,
+		BuildID:       "",
+		BuildStatus:   latestBuildStatus(nil, record),
+		CPUCount:      defaultTemplateCPUCount,
+		CreatedAt:     record.CreatedAt,
+		CreatedBy:     nil,
+		DiskSizeMB:    templateDiskSizeMB(record),
+		EnvdVersion:   "",
+		LastSpawnedAt: nil,
+		MemoryMB:      defaultTemplateMemoryMB,
+		Names:         []string{},
+		Public:        false,
+		SpawnCount:    0,
 		TemplateID:    info.GetTemplateId(),
-		RootfsPath:    info.GetRootfsPath(),
-		MemfilePath:   info.GetMemfilePath(),
-		SnapfilePath:  info.GetSnapfilePath(),
-		CreatedAtUnix: info.GetCreatedAtUnix(),
-		Labels:        info.GetLabels(),
+		UpdatedAt:     record.UpdatedAt,
 	}
 }
 
-func templateProtoListToResponse(infos []*novitaboxv1.TemplateInfo) []templateResponse {
-	templates := make([]templateResponse, 0, len(infos))
+func templateProtoToCompatibleDetailResponse(info *novitaboxv1.TemplateInfo) compatibleTemplateWithBuildsResponse {
+	record := store.TemplateRecord{
+		ID:           info.GetTemplateId(),
+		RootfsPath:   info.GetRootfsPath(),
+		MemfilePath:  info.GetMemfilePath(),
+		SnapfilePath: info.GetSnapfilePath(),
+		CreatedAt:    time.Unix(info.GetCreatedAtUnix(), 0).UTC(),
+		UpdatedAt:    time.Unix(info.GetCreatedAtUnix(), 0).UTC(),
+	}
+	return compatibleTemplateWithBuildsResponse{
+		Aliases:       []string{},
+		Builds:        []compatibleTemplateBuildResponse{},
+		CreatedAt:     record.CreatedAt,
+		LastSpawnedAt: nil,
+		Names:         []string{},
+		Public:        false,
+		SpawnCount:    0,
+		TemplateID:    info.GetTemplateId(),
+		UpdatedAt:     record.UpdatedAt,
+	}
+}
+
+func templateProtoListToCompatibleResponse(infos []*novitaboxv1.TemplateInfo) []compatibleTemplateResponse {
+	templates := make([]compatibleTemplateResponse, 0, len(infos))
 	for _, info := range infos {
-		templates = append(templates, templateProtoToResponse(info))
+		templates = append(templates, templateProtoToCompatibleResponse(info))
 	}
 	return templates
+}
+
+func templateBuildRecordsToCompatibleResponse(records []store.TemplateBuildRecord, diskSizeMB int64, cpuCount int32, memoryMB int32) []compatibleTemplateBuildResponse {
+	builds := make([]compatibleTemplateBuildResponse, 0, len(records))
+	for _, record := range records {
+		builds = append(builds, templateBuildRecordToCompatibleResponse(record, diskSizeMB, cpuCount, memoryMB))
+	}
+	return builds
+}
+
+func templateBuildRecordToCompatibleResponse(record store.TemplateBuildRecord, diskSizeMB int64, cpuCount int32, memoryMB int32) compatibleTemplateBuildResponse {
+	var finishedAt *time.Time
+	if record.Status == store.TemplateBuildStatusReady || record.Status == store.TemplateBuildStatusError {
+		finishedAt = &record.UpdatedAt
+	}
+	return compatibleTemplateBuildResponse{
+		BuildID:    record.ID,
+		CPUCount:   cpuCount,
+		CreatedAt:  record.CreatedAt,
+		DiskSizeMB: &diskSizeMB,
+		MemoryMB:   memoryMB,
+		Status:     string(record.Status),
+		FinishedAt: finishedAt,
+		UpdatedAt:  record.UpdatedAt,
+	}
+}
+
+func latestTemplateBuild(builds []store.TemplateBuildRecord) *store.TemplateBuildRecord {
+	if len(builds) == 0 {
+		return nil
+	}
+	return &builds[0]
+}
+
+func latestBuildID(build *store.TemplateBuildRecord) string {
+	if build == nil {
+		return ""
+	}
+	return build.ID
+}
+
+func latestBuildStatus(build *store.TemplateBuildRecord, record store.TemplateRecord) string {
+	if build != nil {
+		return string(build.Status)
+	}
+	if fileExists(record.RootfsPath) && fileExists(record.MemfilePath) && fileExists(record.SnapfilePath) {
+		return string(store.TemplateBuildStatusReady)
+	}
+	return string(store.TemplateBuildStatusWaiting)
+}
+
+func templateDiskSizeMB(record store.TemplateRecord) int64 {
+	const mib = 1024 * 1024
+	total := fileSize(record.RootfsPath) + fileSize(record.MemfilePath) + fileSize(record.SnapfilePath)
+	if total == 0 {
+		return 0
+	}
+	return (total + mib - 1) / mib
+}
+
+func templateCPUCount(record store.TemplateRecord) int32 {
+	if record.CPUCount > 0 {
+		return record.CPUCount
+	}
+	return defaultTemplateCPUCount
+}
+
+func templateMemoryMB(record store.TemplateRecord) int32 {
+	if record.MemoryMB > 0 {
+		return record.MemoryMB
+	}
+	return defaultTemplateMemoryMB
+}
+
+func emptyMapAsNil(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	return values
+}
+
+func fileSize(path string) int64 {
+	if path == "" {
+		return 0
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return 0
+	}
+	return info.Size()
+}
+
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func handleTemplateReadError(c *gin.Context, h *Handler, err error, message string) {
@@ -507,11 +740,15 @@ func handleTemplateReadError(c *gin.Context, h *Handler, err error, message stri
 }
 
 func newTemplateID() (string, error) {
-	id, err := newBuildID()
-	if err != nil {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz1234567890"
+	var b [20]byte
+	if _, err := rand.Read(b[:]); err != nil {
 		return "", err
 	}
-	return "tpl-" + id, nil
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return "tpl-" + string(b[:]), nil
 }
 
 func validateTemplateID(templateID string) error {
@@ -581,10 +818,11 @@ func deduplicateStrings(values []string) []string {
 	return result
 }
 
-func templatePaths(rootDir string, templateID string) store.TemplateRecord {
+func newTemplateRecord(rootDir string, templateID string) store.TemplateRecord {
 	dir := layout.New(rootDir).TemplateDir(templateID)
 
 	return store.TemplateRecord{
+		ID:           templateID,
 		RootfsPath:   filepath.Join(dir, "rootfs.ext4"),
 		MemfilePath:  filepath.Join(dir, "memfile"),
 		SnapfilePath: filepath.Join(dir, "snapfile"),

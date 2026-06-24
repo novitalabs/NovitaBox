@@ -20,6 +20,13 @@ func (s *Server) router() *gin.Engine {
 
 	r.GET("/healthz", h.Healthz)
 
+	templateRoutes := r.Group("/templates")
+	{
+		templateRoutes.GET("", h.ListTemplates)
+		templateRoutes.GET("/:template_id", h.GetTemplate)
+		templateRoutes.DELETE("/:template_id", h.DeleteTemplate)
+	}
+
 	v2 := r.Group("/v2")
 	{
 		v2.POST("/templates/:template_id/builds/:build_id", h.StartTemplateBuildV2)
@@ -61,13 +68,6 @@ func (s *Server) router() *gin.Engine {
 			runtimes.GET("/:runtime_type/capabilities", h.GetRuntimeCapabilities)
 		}
 
-		templates := v1.Group("/templates")
-		{
-			templates.GET("", h.ListTemplates)
-			templates.POST("/convert", h.ConvertTemplate)
-			templates.GET("/:template_id", h.GetTemplate)
-			templates.DELETE("/:template_id", h.DeleteTemplate)
-		}
 	}
 
 	r.NoRoute(func(c *gin.Context) {

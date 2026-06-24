@@ -23,6 +23,12 @@ type ServiceOptions struct {
 	TemplateBoxdBinary    string
 	TemplateBoxdGuestPath string
 	TemplateBoxdGuestAddr string
+	NetworkEnabled        bool
+	NetworkHostAccessCIDR string
+	NetworkVethCIDR       string
+	NetworkGuestIP        string
+	NetworkGatewayIP      string
+	NetworkGuestMAC       string
 }
 
 func ApplyServiceOptions(defaults Config, name string, opts ServiceOptions) (Config, error) {
@@ -65,6 +71,22 @@ func ApplyServiceOptions(defaults Config, name string, opts ServiceOptions) (Con
 	}
 	if opts.TemplateBoxdGuestAddr != "" {
 		cfg.Template.BoxdGuestAddr = opts.TemplateBoxdGuestAddr
+	}
+	cfg.Network.Enabled = opts.NetworkEnabled
+	if opts.NetworkHostAccessCIDR != "" {
+		cfg.Network.HostAccessCIDR = opts.NetworkHostAccessCIDR
+	}
+	if opts.NetworkVethCIDR != "" {
+		cfg.Network.VethCIDR = opts.NetworkVethCIDR
+	}
+	if opts.NetworkGuestIP != "" {
+		cfg.Network.GuestIP = opts.NetworkGuestIP
+	}
+	if opts.NetworkGatewayIP != "" {
+		cfg.Network.GatewayIP = opts.NetworkGatewayIP
+	}
+	if opts.NetworkGuestMAC != "" {
+		cfg.Network.GuestMAC = opts.NetworkGuestMAC
 	}
 
 	addr := opts.Addr

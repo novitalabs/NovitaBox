@@ -15,6 +15,7 @@ import (
 	"github.com/novitalabs/NovitaBox/internal/config"
 	"github.com/novitalabs/NovitaBox/internal/log"
 	novitaboxv1 "github.com/novitalabs/NovitaBox/internal/pb/novitabox/v1"
+	"github.com/novitalabs/NovitaBox/internal/storage/store"
 	"github.com/novitalabs/NovitaBox/internal/storage/store/sqlite"
 )
 
@@ -70,6 +71,20 @@ func TestArtifactServiceCreateTemplateFromLocalRootfs(t *testing.T) {
 	if record.RootfsPath != wantRootfs {
 		t.Fatalf("stored rootfs path = %q, want %q", record.RootfsPath, wantRootfs)
 	}
+}
+
+func TestCloneOrCopyFileCopiesContent(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	dest := filepath.Join(root, "nested", "dest")
+	if err := os.WriteFile(source, []byte("content"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	if err := cloneOrCopyFile(source, dest); err != nil {
+		t.Fatalf("cloneOrCopyFile() error = %v", err)
+	}
+	assertFileContent(t, dest, "content")
 }
 
 func TestArtifactServiceCreateTemplateSnapshotRequiresKernel(t *testing.T) {
@@ -147,6 +162,131 @@ func TestArtifactServiceTemplateCRUD(t *testing.T) {
 	}
 }
 
+func TestArtifactServiceImageCRUD(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source-rootfs.ext4")
+	if err := os.WriteFile(source, []byte("rootfs"), 0o644); err != nil {
+		t.Fatalf("write source rootfs: %v", err)
+	}
+
+	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	defer st.Close()
+
+	cfg := config.Default()
+	cfg.RootDir = root
+	svc := newArtifactService(cfg, log.NewNop(), st)
+
+	if _, err := svc.CreateImage(context.Background(), &novitaboxv1.CreateImageRequest{
+		ImageId:     "img-crud",
+		DockerImage: source,
+	}); err != nil {
+		t.Fatalf("CreateImage() error = %v", err)
+	}
+
+	wantRootfs := filepath.Join(root, "images", "img-crud", "rootfs.ext4")
+	data, err := os.ReadFile(wantRootfs)
+	if err != nil {
+		t.Fatalf("read image rootfs: %v", err)
+	}
+	if string(data) != "rootfs" {
+		t.Fatalf("image rootfs content = %q, want rootfs", string(data))
+	}
+
+	list, err := svc.ListImages(context.Background(), &novitaboxv1.ListImagesRequest{})
+	if err != nil {
+		t.Fatalf("ListImages() error = %v", err)
+	}
+	if len(list.GetImages()) != 1 || list.GetImages()[0].GetImageId() != "img-crud" {
+		t.Fatalf("images = %#v, want img-crud", list.GetImages())
+	}
+
+	got, err := svc.GetImage(context.Background(), &novitaboxv1.GetImageRequest{ImageId: "img-crud"})
+	if err != nil {
+		t.Fatalf("GetImage() error = %v", err)
+	}
+	if got.GetRootfsPath() != wantRootfs {
+		t.Fatalf("rootfs path = %q, want %q", got.GetRootfsPath(), wantRootfs)
+	}
+
+	if _, err := svc.DeleteImage(context.Background(), &novitaboxv1.DeleteImageRequest{ImageId: "img-crud"}); err != nil {
+		t.Fatalf("DeleteImage() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "images", "img-crud")); !os.IsNotExist(err) {
+		t.Fatalf("image dir stat error = %v, want not exist", err)
+	}
+}
+
+func TestSandboxServiceCreateFromTemplatePreparesRuntimeFiles(t *testing.T) {
+	root := t.TempDir()
+	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	defer st.Close()
+
+	templateDir := filepath.Join(root, "templates", "tpl-local")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatalf("create template dir: %v", err)
+	}
+	for name, content := range map[string]string{
+		"rootfs.ext4": "rootfs",
+		"memfile":     "mem",
+		"snapfile":    "snap",
+	} {
+		if err := os.WriteFile(filepath.Join(templateDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write template %s: %v", name, err)
+		}
+	}
+	if err := st.CreateTemplate(context.Background(), store.TemplateRecord{
+		ID:           "tpl-local",
+		RootfsPath:   filepath.Join(templateDir, "rootfs.ext4"),
+		MemfilePath:  filepath.Join(templateDir, "memfile"),
+		SnapfilePath: filepath.Join(templateDir, "snapfile"),
+	}); err != nil {
+		t.Fatalf("create template record: %v", err)
+	}
+
+	kernelPath := filepath.Join(root, "vmlinux.bin")
+	if err := os.WriteFile(kernelPath, []byte("kernel"), 0o644); err != nil {
+		t.Fatalf("write kernel: %v", err)
+	}
+
+	cfg := config.Default()
+	cfg.RootDir = root
+	cfg.Template.KernelPath = kernelPath
+	svc := newSandboxService(cfg, log.NewNop(), st)
+
+	spec := svc.completeRuntimeSpec(store.SandboxRecord{
+		ID:          "i-test",
+		RuntimeType: novitaboxv1.RuntimeType_RUNTIME_TYPE_FIRECRACKER.String(),
+		TemplateID:  "tpl-local",
+	}, nil)
+	if err := svc.prepareSandboxRuntimeFiles(context.Background(), store.SandboxRecord{
+		ID:          "i-test",
+		RuntimeType: novitaboxv1.RuntimeType_RUNTIME_TYPE_FIRECRACKER.String(),
+		TemplateID:  "tpl-local",
+	}, spec); err != nil {
+		t.Fatalf("prepareSandboxRuntimeFiles() error = %v", err)
+	}
+
+	sandboxDir := filepath.Join(root, "sandboxes", "i-test")
+	assertFileContent(t, filepath.Join(sandboxDir, "snapshot", "rootfs.ext4"), "rootfs")
+	assertFileContent(t, filepath.Join(sandboxDir, "snapshot", "memfile"), "mem")
+	assertFileContent(t, filepath.Join(sandboxDir, "snapshot", "snapfile"), "snap")
+
+	kernelLink := filepath.Join(sandboxDir, "kernel")
+	target, err := os.Readlink(kernelLink)
+	if err != nil {
+		t.Fatalf("read kernel symlink: %v", err)
+	}
+	if target != kernelPath {
+		t.Fatalf("kernel symlink target = %q, want %q", target, kernelPath)
+	}
+}
+
 func TestWaitHTTPHealth(t *testing.T) {
 	requests := 0
 	client := &http.Client{
@@ -208,6 +348,18 @@ func TestResolveShimBinaryAbsolute(t *testing.T) {
 	}
 	if path != "/opt/novitabox/bin/boxshim" {
 		t.Fatalf("path = %q, want absolute path unchanged", path)
+	}
+}
+
+func assertFileContent(t *testing.T, path string, want string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(data) != want {
+		t.Fatalf("%s content = %q, want %q", path, string(data), want)
 	}
 }
 
