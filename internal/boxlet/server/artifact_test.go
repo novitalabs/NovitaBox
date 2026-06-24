@@ -99,6 +99,54 @@ func TestArtifactServiceCreateTemplateSnapshotRequiresKernel(t *testing.T) {
 	}
 }
 
+func TestArtifactServiceTemplateCRUD(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source-rootfs.ext4")
+	if err := os.WriteFile(source, []byte("rootfs"), 0o644); err != nil {
+		t.Fatalf("write source rootfs: %v", err)
+	}
+
+	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	defer st.Close()
+
+	cfg := config.Default()
+	cfg.RootDir = root
+	svc := newArtifactService(cfg, log.NewNop(), st)
+
+	if _, err := svc.CreateTemplate(context.Background(), &novitaboxv1.CreateTemplateRequest{
+		TemplateId:  "tpl-crud",
+		DockerImage: source,
+	}); err != nil {
+		t.Fatalf("CreateTemplate() error = %v", err)
+	}
+
+	list, err := svc.ListTemplates(context.Background(), &novitaboxv1.ListTemplatesRequest{})
+	if err != nil {
+		t.Fatalf("ListTemplates() error = %v", err)
+	}
+	if len(list.GetTemplates()) != 1 || list.GetTemplates()[0].GetTemplateId() != "tpl-crud" {
+		t.Fatalf("templates = %#v, want tpl-crud", list.GetTemplates())
+	}
+
+	got, err := svc.GetTemplate(context.Background(), &novitaboxv1.GetTemplateRequest{TemplateId: "tpl-crud"})
+	if err != nil {
+		t.Fatalf("GetTemplate() error = %v", err)
+	}
+	if got.GetRootfsPath() == "" {
+		t.Fatalf("rootfs path is empty")
+	}
+
+	if _, err := svc.DeleteTemplate(context.Background(), &novitaboxv1.DeleteTemplateRequest{TemplateId: "tpl-crud"}); err != nil {
+		t.Fatalf("DeleteTemplate() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "templates", "tpl-crud")); !os.IsNotExist(err) {
+		t.Fatalf("template dir stat error = %v, want not exist", err)
+	}
+}
+
 func TestWaitHTTPHealth(t *testing.T) {
 	requests := 0
 	client := &http.Client{
@@ -170,6 +218,13 @@ func TestTemplateBoxdInitScript(t *testing.T) {
 	}
 	if strings.Contains(script, "exec /sbin/init") || strings.Contains(script, "exec /bin/sh") {
 		t.Fatalf("init script should keep boxd as PID 1: %s", script)
+	}
+}
+
+func TestTemplateKernelArgsUseInjectedInit(t *testing.T) {
+	args := strings.Join(templateKernelArgs(nil), " ")
+	if !strings.Contains(args, "init=/novitabox/init") {
+		t.Fatalf("template kernel args = %q, want injected init", args)
 	}
 }
 

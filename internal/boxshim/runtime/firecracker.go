@@ -23,7 +23,10 @@ import (
 	"github.com/novitalabs/NovitaBox/internal/storage/layout"
 )
 
-const firecrackerAPITimeout = 10 * time.Second
+const (
+	firecrackerAPITimeout      = 10 * time.Second
+	firecrackerPostStartWindow = 1 * time.Second
+)
 
 type FirecrackerDriver struct {
 	cfg    config.Config
@@ -32,6 +35,9 @@ type FirecrackerDriver struct {
 
 	mu      sync.Mutex
 	cmd     *exec.Cmd
+	waitCh  chan error
+	exited  bool
+	exitErr error
 	info    *novitaboxv1.RuntimeInfo
 	spec    *novitaboxv1.RuntimeSpec
 	logPath string
@@ -76,6 +82,10 @@ func (d *FirecrackerDriver) Create(ctx context.Context, spec *novitaboxv1.Runtim
 	}
 
 	if err := d.configureMachine(ctx, spec); err != nil {
+		_ = d.killLocked()
+		return nil, d.withLogTail(err)
+	}
+	if err := d.waitPostStartAliveLocked(ctx, firecrackerPostStartWindow); err != nil {
 		_ = d.killLocked()
 		return nil, d.withLogTail(err)
 	}
@@ -264,16 +274,11 @@ func (d *FirecrackerDriver) Status(_ context.Context, sandboxID string) (*novita
 		return nil, fmt.Errorf("runtime sandbox mismatch: have %q, got %q", d.info.GetSandboxId(), sandboxID)
 	}
 	if d.cmd != nil && d.cmd.Process != nil && d.info.State == novitaboxv1.RuntimeState_RUNTIME_STATE_RUNNING {
-		if err := d.cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		if err := d.checkProcessAliveLocked(); err != nil {
 			d.info.State = novitaboxv1.RuntimeState_RUNTIME_STATE_EXITED
 			d.info.Pid = 0
-			d.info.ErrorMessage = d.withLogTail(fmt.Errorf("firecracker process is not alive: %w", err)).Error()
+			d.info.ErrorMessage = err.Error()
 		}
-	}
-	if d.cmd != nil && d.cmd.ProcessState != nil && d.info.State == novitaboxv1.RuntimeState_RUNTIME_STATE_RUNNING {
-		d.info.State = novitaboxv1.RuntimeState_RUNTIME_STATE_EXITED
-		d.info.Pid = 0
-		d.info.ErrorMessage = d.withLogTail(fmt.Errorf("firecracker process exited: %s", d.cmd.ProcessState.String())).Error()
 	}
 
 	return cloneRuntimeInfo(d.info), nil
@@ -370,7 +375,15 @@ func (d *FirecrackerDriver) startFirecrackerLocked(spec *novitaboxv1.RuntimeSpec
 	}
 	logFile.Close()
 
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
 	d.cmd = cmd
+	d.waitCh = waitCh
+	d.exited = false
+	d.exitErr = nil
 	d.client = newFirecrackerClient(apiSocket)
 	d.logPath = logPath
 
@@ -381,14 +394,54 @@ func (d *FirecrackerDriver) checkProcessAliveLocked() error {
 	if d.cmd == nil || d.cmd.Process == nil {
 		return d.withLogTail(errors.New("firecracker process is not running"))
 	}
-	if d.cmd.ProcessState != nil {
-		return d.withLogTail(fmt.Errorf("firecracker process exited: %s", d.cmd.ProcessState.String()))
+	d.refreshProcessExitLocked()
+	if d.exited {
+		if d.exitErr != nil {
+			return d.withLogTail(fmt.Errorf("firecracker process exited: %w", d.exitErr))
+		}
+		return d.withLogTail(errors.New("firecracker process exited"))
 	}
 	if err := d.cmd.Process.Signal(syscall.Signal(0)); err != nil {
 		return d.withLogTail(fmt.Errorf("firecracker process is not alive: %w", err))
 	}
 
 	return nil
+}
+
+func (d *FirecrackerDriver) refreshProcessExitLocked() {
+	if d.waitCh == nil || d.exitErr != nil {
+		return
+	}
+
+	select {
+	case err := <-d.waitCh:
+		d.exited = true
+		d.exitErr = err
+		d.waitCh = nil
+	default:
+	}
+}
+
+func (d *FirecrackerDriver) waitPostStartAliveLocked(ctx context.Context, window time.Duration) error {
+	timer := time.NewTimer(window)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if err := d.checkProcessAliveLocked(); err != nil {
+			return fmt.Errorf("firecracker exited shortly after start: %w", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+		case <-ticker.C:
+		}
+	}
 }
 
 func (d *FirecrackerDriver) waitForAPI(ctx context.Context, socketPath string) error {
@@ -430,18 +483,14 @@ func (d *FirecrackerDriver) killLocked() error {
 		return nil
 	}
 
+	d.refreshProcessExitLocked()
 	if err := d.cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		_ = d.cmd.Process.Kill()
 		return fmt.Errorf("terminate firecracker: %w", err)
 	}
 
-	done := make(chan error, 1)
-	go func() {
-		done <- d.cmd.Wait()
-	}()
-
 	select {
-	case err := <-done:
+	case err := <-d.processWaitChLocked():
 		if err != nil {
 			var exitErr *exec.ExitError
 			if !errors.As(err, &exitErr) {
@@ -452,10 +501,13 @@ func (d *FirecrackerDriver) killLocked() error {
 		if err := d.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return fmt.Errorf("kill firecracker: %w", err)
 		}
-		<-done
+		<-d.processWaitChLocked()
 	}
 
 	d.cmd = nil
+	d.waitCh = nil
+	d.exited = false
+	d.exitErr = nil
 	d.client = nil
 	return nil
 }
@@ -465,13 +517,8 @@ func (d *FirecrackerDriver) waitProcessExitLocked(timeout time.Duration) error {
 		return nil
 	}
 
-	done := make(chan error, 1)
-	go func() {
-		done <- d.cmd.Wait()
-	}()
-
 	select {
-	case err := <-done:
+	case err := <-d.processWaitChLocked():
 		if err != nil {
 			var exitErr *exec.ExitError
 			if !errors.As(err, &exitErr) {
@@ -482,12 +529,25 @@ func (d *FirecrackerDriver) waitProcessExitLocked(timeout time.Duration) error {
 		if err := d.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return fmt.Errorf("kill firecracker after graceful shutdown timeout: %w", err)
 		}
-		<-done
+		<-d.processWaitChLocked()
 	}
 
 	d.cmd = nil
+	d.waitCh = nil
+	d.exited = false
+	d.exitErr = nil
 	d.client = nil
 	return nil
+}
+
+func (d *FirecrackerDriver) processWaitChLocked() <-chan error {
+	if d.waitCh != nil {
+		return d.waitCh
+	}
+
+	done := make(chan error, 1)
+	done <- d.exitErr
+	return done
 }
 
 func (d *FirecrackerDriver) withLogTail(err error) error {

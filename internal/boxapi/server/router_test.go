@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/novitalabs/NovitaBox/internal/config"
@@ -122,12 +124,84 @@ func TestRouterSandboxLifecycleFallback(t *testing.T) {
 		t.Fatalf("resume expected status %d, got %d body=%s", http.StatusOK, resumeRec.Code, resumeRec.Body.String())
 	}
 
+	sandboxDir := filepath.Join(s.cfg.RootDir, "sandboxes", "sbx-test")
+	if err := os.MkdirAll(sandboxDir, 0o755); err != nil {
+		t.Fatalf("create sandbox dir: %v", err)
+	}
+
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/sandboxes/sbx-test", nil)
 	deleteRec := httptest.NewRecorder()
 	s.router().ServeHTTP(deleteRec, deleteReq)
 
 	if deleteRec.Code != http.StatusNoContent {
 		t.Fatalf("delete expected status %d, got %d body=%s", http.StatusNoContent, deleteRec.Code, deleteRec.Body.String())
+	}
+	if _, err := os.Stat(sandboxDir); !os.IsNotExist(err) {
+		t.Fatalf("sandbox dir stat error = %v, want not exist", err)
+	}
+}
+
+func TestRouterSandboxPowerLifecycleFallback(t *testing.T) {
+	s := newTestServer(t)
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"sandbox_id":"sbx-power","templateID":"tpl-test"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	s.router().ServeHTTP(createRec, createReq)
+
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create expected status %d, got %d body=%s", http.StatusCreated, createRec.Code, createRec.Body.String())
+	}
+
+	for _, tc := range []struct {
+		name  string
+		path  string
+		state string
+	}{
+		{name: "poweroff", path: "/v1/sandboxes/sbx-power/poweroff", state: "stopped"},
+		{name: "poweron", path: "/v1/sandboxes/sbx-power/poweron", state: "running"},
+		{name: "reboot", path: "/v1/sandboxes/sbx-power/reboot", state: "running"},
+	} {
+		req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+		rec := httptest.NewRecorder()
+		s.router().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s expected status %d, got %d body=%s", tc.name, http.StatusOK, rec.Code, rec.Body.String())
+		}
+		var got struct {
+			SandboxID string `json:"sandboxID"`
+			State     string `json:"state"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode %s response: %v", tc.name, err)
+		}
+		if got.SandboxID != "sbx-power" || got.State != tc.state {
+			t.Fatalf("%s sandbox = %#v, want sbx-power %s", tc.name, got, tc.state)
+		}
+	}
+}
+
+func TestRouterSandboxNotFound(t *testing.T) {
+	s := newTestServer(t)
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/v1/sandboxes/sbx-missing"},
+		{method: http.MethodDelete, path: "/v1/sandboxes/sbx-missing"},
+		{method: http.MethodPost, path: "/v1/sandboxes/sbx-missing/pause"},
+		{method: http.MethodPost, path: "/v1/sandboxes/sbx-missing/resume"},
+		{method: http.MethodPost, path: "/v1/sandboxes/sbx-missing/poweroff"},
+		{method: http.MethodPost, path: "/v1/sandboxes/sbx-missing/poweron"},
+		{method: http.MethodPost, path: "/v1/sandboxes/sbx-missing/reboot"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		rec := httptest.NewRecorder()
+		s.router().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s %s expected status %d, got %d body=%s", tc.method, tc.path, http.StatusNotFound, rec.Code, rec.Body.String())
+		}
 	}
 }
 
@@ -203,7 +277,7 @@ func TestRouterCreateSandboxRequiresTemplate(t *testing.T) {
 
 func TestRouterCreateTemplateV3(t *testing.T) {
 	s := newTestServer(t)
-	body := bytes.NewBufferString(`{"name":"team/python:v1","tags":["latest","v1"],"metadata":{"owner":"test"},"cpuCount":4,"memoryMB":1024}`)
+	body := bytes.NewBufferString(`{"templateID":"tpl-explicit","name":"team/python:v1","tags":["latest","v1"],"metadata":{"owner":"test"},"cpuCount":4,"memoryMB":1024}`)
 	req := httptest.NewRequest(http.MethodPost, "/v3/templates", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -226,8 +300,8 @@ func TestRouterCreateTemplateV3(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.TemplateID != "tpl-team-python" {
-		t.Fatalf("templateID = %q, want tpl-team-python", got.TemplateID)
+	if got.TemplateID != "tpl-explicit" {
+		t.Fatalf("templateID = %q, want tpl-explicit", got.TemplateID)
 	}
 	if got.BuildID == "" {
 		t.Fatal("buildID is empty")
@@ -246,6 +320,32 @@ func TestRouterCreateTemplateV3(t *testing.T) {
 	}
 	if got.Public {
 		t.Fatal("public = true, want false")
+	}
+}
+
+func TestRouterCreateTemplateV3GeneratesTemplateID(t *testing.T) {
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/v3/templates", bytes.NewBufferString(`{"name":"team/python:v1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusAccepted, rec.Code, rec.Body.String())
+	}
+
+	var got struct {
+		TemplateID string `json:"templateID"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !strings.HasPrefix(got.TemplateID, "tpl-") {
+		t.Fatalf("templateID = %q, want generated tpl-* id", got.TemplateID)
+	}
+	if got.TemplateID == "tpl-team-python" {
+		t.Fatalf("templateID = %q, should not be derived from template name", got.TemplateID)
 	}
 }
 
@@ -294,6 +394,103 @@ func TestRouterStartTemplateBuildV2NotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, rec.Code, rec.Body.String())
+	}
+}
+
+func TestRouterTemplateCRUD(t *testing.T) {
+	s := newTestServer(t)
+	createReq := httptest.NewRequest(http.MethodPost, "/v3/templates", bytes.NewBufferString(`{"templateID":"tpl-crud","name":"team/python:v1"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	s.router().ServeHTTP(createRec, createReq)
+
+	if createRec.Code != http.StatusAccepted {
+		t.Fatalf("create expected status %d, got %d body=%s", http.StatusAccepted, createRec.Code, createRec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/templates", nil)
+	listRec := httptest.NewRecorder()
+	s.router().ServeHTTP(listRec, listReq)
+
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list expected status %d, got %d body=%s", http.StatusOK, listRec.Code, listRec.Body.String())
+	}
+	var listGot struct {
+		Templates []struct {
+			TemplateID string `json:"templateID"`
+		} `json:"templates"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listGot); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listGot.Templates) != 1 || listGot.Templates[0].TemplateID != "tpl-crud" {
+		t.Fatalf("templates = %#v, want tpl-crud", listGot.Templates)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/templates/tpl-crud", nil)
+	getRec := httptest.NewRecorder()
+	s.router().ServeHTTP(getRec, getReq)
+
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get expected status %d, got %d body=%s", http.StatusOK, getRec.Code, getRec.Body.String())
+	}
+	var getGot struct {
+		TemplateID  string `json:"templateID"`
+		RootfsPath  string `json:"rootfsPath"`
+		MemfilePath string `json:"memfilePath"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &getGot); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if getGot.TemplateID != "tpl-crud" || !strings.HasSuffix(getGot.RootfsPath, filepath.Join("templates", "tpl-crud", "rootfs.ext4")) || getGot.MemfilePath == "" {
+		t.Fatalf("template = %#v, want tpl-crud paths", getGot)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/templates/tpl-crud", nil)
+	deleteRec := httptest.NewRecorder()
+	s.router().ServeHTTP(deleteRec, deleteReq)
+
+	if deleteRec.Code != http.StatusNoContent {
+		t.Fatalf("delete expected status %d, got %d body=%s", http.StatusNoContent, deleteRec.Code, deleteRec.Body.String())
+	}
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/v1/templates/tpl-crud", nil)
+	missingRec := httptest.NewRecorder()
+	s.router().ServeHTTP(missingRec, missingReq)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing get expected status %d, got %d body=%s", http.StatusNotFound, missingRec.Code, missingRec.Body.String())
+	}
+}
+
+func TestRouterConvertTemplateToImage(t *testing.T) {
+	s := newTestServer(t)
+	createReq := httptest.NewRequest(http.MethodPost, "/v3/templates", bytes.NewBufferString(`{"templateID":"tpl-convert","name":"team/python:v1"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	s.router().ServeHTTP(createRec, createReq)
+
+	if createRec.Code != http.StatusAccepted {
+		t.Fatalf("create expected status %d, got %d body=%s", http.StatusAccepted, createRec.Code, createRec.Body.String())
+	}
+
+	convertReq := httptest.NewRequest(http.MethodPost, "/v1/templates/convert", bytes.NewBufferString(`{"templateID":"tpl-convert","imageID":"img-convert"}`))
+	convertReq.Header.Set("Content-Type", "application/json")
+	convertRec := httptest.NewRecorder()
+	s.router().ServeHTTP(convertRec, convertReq)
+
+	if convertRec.Code != http.StatusCreated {
+		t.Fatalf("convert expected status %d, got %d body=%s", http.StatusCreated, convertRec.Code, convertRec.Body.String())
+	}
+	var got struct {
+		ImageID    string `json:"imageID"`
+		TemplateID string `json:"templateID"`
+		RootfsPath string `json:"rootfsPath"`
+	}
+	if err := json.Unmarshal(convertRec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode convert response: %v", err)
+	}
+	if got.ImageID != "img-convert" || got.TemplateID != "tpl-convert" || got.RootfsPath == "" {
+		t.Fatalf("convert response = %#v, want img-convert from tpl-convert", got)
 	}
 }
 

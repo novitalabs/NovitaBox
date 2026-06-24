@@ -1,8 +1,11 @@
 package runtime
 
 import (
+	"context"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	novitaboxv1 "github.com/novitalabs/NovitaBox/internal/pb/novitabox/v1"
 )
@@ -38,5 +41,25 @@ func TestBootArgsDoNotOverrideInitArg(t *testing.T) {
 	}
 	if !strings.Contains(got, "init=/custom/init") {
 		t.Fatalf("boot args = %q, want existing init arg", got)
+	}
+}
+
+func TestWaitPostStartAliveDetectsExitedProcess(t *testing.T) {
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start command: %v", err)
+	}
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	driver := &FirecrackerDriver{cmd: cmd, waitCh: waitCh}
+	err := driver.waitPostStartAliveLocked(context.Background(), time.Second)
+	if err == nil {
+		t.Fatal("waitPostStartAliveLocked() error = nil, want exited process error")
+	}
+	if !strings.Contains(err.Error(), "firecracker exited shortly after start") {
+		t.Fatalf("error = %q, want firecracker exited shortly after start", err.Error())
 	}
 }

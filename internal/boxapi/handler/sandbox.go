@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/novitalabs/NovitaBox/internal/sandbox"
 	"github.com/novitalabs/NovitaBox/internal/storage/layout"
 	"github.com/novitalabs/NovitaBox/internal/storage/store"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type createSandboxRequest struct {
@@ -128,7 +131,7 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 			},
 		})
 		if err != nil {
-			response.Error(c, response.ErrInternal("create sandbox through boxlet failed"))
+			h.respondSandboxBoxletError(c, err, "create sandbox through boxlet failed")
 			return
 		}
 
@@ -202,7 +205,7 @@ func (h *Handler) GetSandbox(c *gin.Context) {
 	if h.sandboxClient != nil {
 		got, err := h.sandboxClient.GetSandbox(c.Request.Context(), &novitaboxv1.GetSandboxRequest{SandboxId: sandboxID})
 		if err != nil {
-			response.Error(c, response.ErrInternal("get sandbox through boxlet failed"))
+			h.respondSandboxBoxletError(c, err, "get sandbox through boxlet failed")
 			return
 		}
 		response.JSON(c, http.StatusOK, sandboxProtoInfoResponse(got))
@@ -235,7 +238,7 @@ func (h *Handler) KillSandbox(c *gin.Context) {
 
 	if h.sandboxClient != nil {
 		if _, err := h.sandboxClient.KillSandbox(c.Request.Context(), &novitaboxv1.KillSandboxRequest{SandboxId: sandboxID}); err != nil {
-			response.Error(c, response.ErrInternal("kill sandbox through boxlet failed"))
+			h.respondSandboxBoxletError(c, err, "kill sandbox through boxlet failed")
 			return
 		}
 		c.Status(http.StatusNoContent)
@@ -270,6 +273,10 @@ func (h *Handler) KillSandbox(c *gin.Context) {
 		response.Error(c, response.ErrInternal("delete sandbox failed"))
 		return
 	}
+	if err := os.RemoveAll(layout.New(h.cfg.RootDir).SandboxDir(sandboxID)); err != nil {
+		response.Error(c, response.ErrInternal("remove sandbox directory failed"))
+		return
+	}
 
 	c.Status(http.StatusNoContent)
 }
@@ -284,7 +291,7 @@ func (h *Handler) PauseSandbox(c *gin.Context) {
 	if h.sandboxClient != nil {
 		snapshot, err := h.sandboxClient.PauseSandbox(c.Request.Context(), &novitaboxv1.PauseSandboxRequest{SandboxId: sandboxID})
 		if err != nil {
-			response.Error(c, response.ErrInternal("pause sandbox through boxlet failed"))
+			h.respondSandboxBoxletError(c, err, "pause sandbox through boxlet failed")
 			return
 		}
 		response.JSON(c, http.StatusOK, snapshotProtoResponse(snapshot))
@@ -296,7 +303,7 @@ func (h *Handler) PauseSandbox(c *gin.Context) {
 	}
 
 	if err := h.updateLocalSandboxState(c, sandboxID, sandbox.StatePausing, "pause"); err != nil {
-		response.Error(c, response.ErrInternal("mark sandbox pausing failed"))
+		h.respondSandboxStoreError(c, err, "mark sandbox pausing failed")
 		return
 	}
 	snapshot := h.localSnapshotRecord(sandboxID)
@@ -305,7 +312,7 @@ func (h *Handler) PauseSandbox(c *gin.Context) {
 		return
 	}
 	if err := h.updateLocalSandboxState(c, sandboxID, sandbox.StatePaused, "pause"); err != nil {
-		response.Error(c, response.ErrInternal("mark sandbox paused failed"))
+		h.respondSandboxStoreError(c, err, "mark sandbox paused failed")
 		return
 	}
 	response.JSON(c, http.StatusOK, snapshotRecordResponse(snapshot))
@@ -406,12 +413,12 @@ func (h *Handler) transitionSandbox(c *gin.Context, action string, transitionSta
 
 	if h.sandboxClient != nil {
 		if err := call(sandboxID); err != nil {
-			response.Error(c, response.ErrInternal(action+" sandbox through boxlet failed"))
+			h.respondSandboxBoxletError(c, err, action+" sandbox through boxlet failed")
 			return
 		}
 		got, err := h.sandboxClient.GetSandbox(c.Request.Context(), &novitaboxv1.GetSandboxRequest{SandboxId: sandboxID})
 		if err != nil {
-			response.Error(c, response.ErrInternal("get sandbox through boxlet failed"))
+			h.respondSandboxBoxletError(c, err, "get sandbox through boxlet failed")
 			return
 		}
 		response.JSON(c, http.StatusOK, sandboxProtoInfoResponse(got))
@@ -423,19 +430,40 @@ func (h *Handler) transitionSandbox(c *gin.Context, action string, transitionSta
 	}
 
 	if err := h.updateLocalSandboxState(c, sandboxID, transitionState, action); err != nil {
-		response.Error(c, response.ErrInternal(fmt.Sprintf("mark sandbox %s failed", transitionState)))
+		h.respondSandboxStoreError(c, err, fmt.Sprintf("mark sandbox %s failed", transitionState))
 		return
 	}
 	if err := h.updateLocalSandboxState(c, sandboxID, finalState, action); err != nil {
-		response.Error(c, response.ErrInternal(fmt.Sprintf("mark sandbox %s failed", finalState)))
+		h.respondSandboxStoreError(c, err, fmt.Sprintf("mark sandbox %s failed", finalState))
 		return
 	}
 	record, err := h.store.GetSandbox(c.Request.Context(), sandboxID)
 	if err != nil {
-		response.Error(c, response.ErrInternal("load sandbox failed"))
+		h.respondSandboxStoreError(c, err, "load sandbox failed")
 		return
 	}
 	response.JSON(c, http.StatusOK, sandboxRecordInfoResponse(*record))
+}
+
+func (h *Handler) respondSandboxBoxletError(c *gin.Context, err error, fallbackMessage string) {
+	switch status.Code(err) {
+	case codes.NotFound:
+		response.Error(c, response.ErrNotFound("sandbox not found"))
+	case codes.AlreadyExists:
+		response.Error(c, response.ErrConflict("sandbox already exists"))
+	case codes.InvalidArgument:
+		response.Error(c, response.ErrBadRequest(status.Convert(err).Message()))
+	default:
+		response.Error(c, response.ErrInternal(fallbackMessage))
+	}
+}
+
+func (h *Handler) respondSandboxStoreError(c *gin.Context, err error, fallbackMessage string) {
+	if errors.Is(err, store.ErrNotFound) {
+		response.Error(c, response.ErrNotFound("sandbox not found"))
+		return
+	}
+	response.Error(c, response.ErrInternal(fallbackMessage))
 }
 
 func (h *Handler) updateLocalSandboxState(c *gin.Context, sandboxID string, to sandbox.State, action string) error {
