@@ -24,6 +24,7 @@ type Server struct {
 	logger     *log.Logger
 	grpcServer *grpc.Server
 	runtime    *runtimeService
+	stopOnce   chan struct{}
 }
 
 func New(cfg config.Config, logger *log.Logger) *Server {
@@ -32,8 +33,9 @@ func New(cfg config.Config, logger *log.Logger) *Server {
 		cfg:        cfg,
 		logger:     logger,
 		grpcServer: grpc.NewServer(),
-		runtime:    newRuntimeService(driver),
+		stopOnce:   make(chan struct{}),
 	}
+	s.runtime = newRuntimeService(driver, s.requestStop)
 	novitaboxv1.RegisterBoxShimServer(s.grpcServer, s.runtime)
 	reflection.Register(s.grpcServer)
 
@@ -81,31 +83,47 @@ func (s *Server) Run(ctx context.Context) error {
 			return nil
 		}
 		return err
-	case <-ctx.Done():
-		stopped := make(chan struct{})
-		go func() {
-			s.grpcServer.GracefulStop()
-			close(stopped)
-		}()
-
-		select {
-		case <-stopped:
-		case <-time.After(10 * time.Second):
-			s.grpcServer.Stop()
-		}
-
+	case <-s.stopOnce:
+		s.stopGRPCServer()
 		s.logger.Info("stopped boxshim")
 		return nil
+	case <-ctx.Done():
+		s.stopGRPCServer()
+		s.logger.Info("stopped boxshim")
+		return nil
+	}
+}
+
+func (s *Server) requestStop() {
+	select {
+	case <-s.stopOnce:
+	default:
+		close(s.stopOnce)
+	}
+}
+
+func (s *Server) stopGRPCServer() {
+	stopped := make(chan struct{})
+	go func() {
+		s.grpcServer.GracefulStop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(10 * time.Second):
+		s.grpcServer.Stop()
 	}
 }
 
 type runtimeService struct {
 	novitaboxv1.UnimplementedBoxShimServer
 	driver shimruntime.Driver
+	onKill func()
 }
 
-func newRuntimeService(driver shimruntime.Driver) *runtimeService {
-	return &runtimeService{driver: driver}
+func newRuntimeService(driver shimruntime.Driver, onKill func()) *runtimeService {
+	return &runtimeService{driver: driver, onKill: onKill}
 }
 
 func (s *runtimeService) CreateRuntime(ctx context.Context, req *novitaboxv1.CreateRuntimeRequest) (*novitaboxv1.RuntimeInfo, error) {
@@ -123,6 +141,9 @@ func (s *runtimeService) ResumeRuntime(ctx context.Context, req *novitaboxv1.Res
 func (s *runtimeService) KillRuntime(ctx context.Context, req *novitaboxv1.KillRuntimeRequest) (*emptypb.Empty, error) {
 	if err := s.driver.Kill(ctx, req.GetSandboxId()); err != nil {
 		return nil, err
+	}
+	if s.onKill != nil {
+		go s.onKill()
 	}
 
 	return &emptypb.Empty{}, nil

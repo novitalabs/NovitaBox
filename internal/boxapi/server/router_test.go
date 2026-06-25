@@ -215,8 +215,17 @@ func TestRouterCreateSandbox(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.SandboxID == "" || !strings.HasPrefix(got.SandboxID, "i") || got.SandboxID == "client-id-is-ignored" {
-		t.Fatalf("sandboxID = %q, want generated i* id", got.SandboxID)
+	if got.SandboxID == "" || !strings.HasPrefix(got.SandboxID, "sbx-") || got.SandboxID == "client-id-is-ignored" {
+		t.Fatalf("sandboxID = %q, want generated sbx-* id", got.SandboxID)
+	}
+	suffix := strings.TrimPrefix(got.SandboxID, "sbx-")
+	if len(suffix) != 20 {
+		t.Fatalf("sandboxID suffix length = %d, want 20", len(suffix))
+	}
+	for _, ch := range suffix {
+		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') {
+			t.Fatalf("sandboxID suffix = %q, want lowercase alphanumeric", suffix)
+		}
 	}
 	if got.TemplateID != "tpl-test" {
 		t.Fatalf("templateID = %q, want tpl-test", got.TemplateID)
@@ -616,6 +625,45 @@ func TestRouterImageCRUD(t *testing.T) {
 	}
 }
 
+func TestRouterCreateImageGeneratesID(t *testing.T) {
+	s := newTestServer(t)
+	source := filepath.Join(s.cfg.RootDir, "source-rootfs.ext4")
+	if err := os.WriteFile(source, []byte("rootfs"), 0o644); err != nil {
+		t.Fatalf("write source rootfs: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images", bytes.NewBufferString(`{"rootfsPath":"`+source+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+	var got struct {
+		ImageID    string `json:"imageID"`
+		RootfsPath string `json:"rootfsPath"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !strings.HasPrefix(got.ImageID, "img-") {
+		t.Fatalf("imageID = %q, want generated img-* id", got.ImageID)
+	}
+	suffix := strings.TrimPrefix(got.ImageID, "img-")
+	if len(suffix) != 20 {
+		t.Fatalf("imageID suffix length = %d, want 20", len(suffix))
+	}
+	for _, ch := range suffix {
+		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') {
+			t.Fatalf("imageID suffix = %q, want lowercase alphanumeric", suffix)
+		}
+	}
+	if !strings.HasSuffix(got.RootfsPath, filepath.Join("images", got.ImageID, "rootfs.ext4")) {
+		t.Fatalf("rootfsPath = %q, want generated image path", got.RootfsPath)
+	}
+}
+
 func TestRouterCreateTemplateV3RequiresName(t *testing.T) {
 	s := newTestServer(t)
 	req := httptest.NewRequest(http.MethodPost, "/v3/templates", bytes.NewBufferString(`{"tags":["latest"]}`))
@@ -661,7 +709,7 @@ func newTestServer(t *testing.T) *Server {
 	root := t.TempDir()
 	cfg := config.Default()
 	cfg.RootDir = root
-	cfg.Storage.DBPath = filepath.Join(root, "novitabox.db")
+	cfg.Storage.DBPath = filepath.Join(root, "db", "novitabox.db")
 
 	st, err := sqlite.Open(t.Context(), cfg.Storage.DBPath)
 	if err != nil {

@@ -17,8 +17,5 @@ func New(cfg config.Config, logger *log.Logger) (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	a.server.Start(ctx)
-	<-ctx.Done()
-	a.server.Stop(context.Background())
-	return nil
+	return a.server.Start(ctx)
 }

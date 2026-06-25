@@ -7,7 +7,6 @@ import (
 	"github.com/novitalabs/NovitaBox/internal/boxapi/server"
 	"github.com/novitalabs/NovitaBox/internal/config"
 	"github.com/novitalabs/NovitaBox/internal/log"
-	"github.com/novitalabs/NovitaBox/internal/storage/layout"
 	"github.com/novitalabs/NovitaBox/internal/storage/store"
 	"github.com/novitalabs/NovitaBox/internal/storage/store/sqlite"
 )
@@ -21,8 +20,9 @@ type App struct {
 func New(cfg config.Config, logger *log.Logger) (*App, error) {
 	dbPath := cfg.Storage.DBPath
 	if dbPath == "" {
-		dbPath = layout.New(cfg.RootDir).DBPath()
+		dbPath = config.DefaultDBPath(cfg.RootDir)
 	}
+	logger.Info("opening sqlite database", "db_path", dbPath)
 
 	st, err := sqlite.Open(context.Background(), dbPath)
 	if err != nil {

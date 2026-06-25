@@ -19,6 +19,20 @@ import (
 	"github.com/novitalabs/NovitaBox/internal/storage/store/sqlite"
 )
 
+func configureStubTemplateBuild(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	cfg.Boxshim.RuntimeDriver = "stub"
+	cfg.Template.KernelPath = filepath.Join(cfg.RootDir, "vmlinux.bin")
+	cfg.Template.BoxdBinaryPath = filepath.Join(cfg.RootDir, "boxd")
+	cfg.Template.AgentWaitSecs = 1
+	if err := os.WriteFile(cfg.Template.KernelPath, []byte("kernel"), 0o644); err != nil {
+		t.Fatalf("write kernel: %v", err)
+	}
+	if err := os.WriteFile(cfg.Template.BoxdBinaryPath, []byte("boxd"), 0o755); err != nil {
+		t.Fatalf("write boxd: %v", err)
+	}
+}
+
 func TestArtifactServiceCreateTemplateFromLocalRootfs(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "source-rootfs.ext4")
@@ -34,6 +48,7 @@ func TestArtifactServiceCreateTemplateFromLocalRootfs(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.RootDir = root
+	configureStubTemplateBuild(t, &cfg)
 	svc := newArtifactService(cfg, log.NewNop(), st)
 
 	info, err := svc.CreateTemplate(context.Background(), &novitaboxv1.CreateTemplateRequest{
@@ -102,7 +117,6 @@ func TestArtifactServiceCreateTemplateSnapshotRequiresKernel(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.RootDir = root
-	cfg.Template.SnapshotEnabled = true
 	svc := newArtifactService(cfg, log.NewNop(), st)
 
 	_, err = svc.CreateTemplate(context.Background(), &novitaboxv1.CreateTemplateRequest{
@@ -129,6 +143,7 @@ func TestArtifactServiceTemplateCRUD(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.RootDir = root
+	configureStubTemplateBuild(t, &cfg)
 	svc := newArtifactService(cfg, log.NewNop(), st)
 
 	if _, err := svc.CreateTemplate(context.Background(), &novitaboxv1.CreateTemplateRequest{
@@ -216,6 +231,42 @@ func TestArtifactServiceImageCRUD(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "images", "img-crud")); !os.IsNotExist(err) {
 		t.Fatalf("image dir stat error = %v, want not exist", err)
+	}
+}
+
+func TestArtifactServiceCreateImageGeneratesID(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source-rootfs.ext4")
+	if err := os.WriteFile(source, []byte("rootfs"), 0o644); err != nil {
+		t.Fatalf("write source rootfs: %v", err)
+	}
+
+	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	defer st.Close()
+
+	cfg := config.Default()
+	cfg.RootDir = root
+	svc := newArtifactService(cfg, log.NewNop(), st)
+
+	got, err := svc.CreateImage(context.Background(), &novitaboxv1.CreateImageRequest{
+		DockerImage: source,
+	})
+	if err != nil {
+		t.Fatalf("CreateImage() error = %v", err)
+	}
+	if !strings.HasPrefix(got.GetImageId(), "img-") {
+		t.Fatalf("imageID = %q, want generated img-* id", got.GetImageId())
+	}
+	suffix := strings.TrimPrefix(got.GetImageId(), "img-")
+	if len(suffix) != 20 {
+		t.Fatalf("imageID suffix length = %d, want 20", len(suffix))
+	}
+	wantRootfs := filepath.Join(root, "images", got.GetImageId(), "rootfs.ext4")
+	if got.GetRootfsPath() != wantRootfs {
+		t.Fatalf("rootfs path = %q, want %q", got.GetRootfsPath(), wantRootfs)
 	}
 }
 
