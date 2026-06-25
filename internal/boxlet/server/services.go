@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -238,9 +240,13 @@ func (s *sandboxService) KillSandbox(ctx context.Context, req *novitaboxv1.KillS
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateKilling, "kill"); err != nil {
 		return nil, err
 	}
+	sandboxDir := layout.New(s.cfg.RootDir).SandboxDir(record.ID)
 	if shim, closeShim, err := s.dialSandboxShim(ctx, record.ID); err == nil {
 		_, _ = shim.KillRuntime(ctx, &novitaboxv1.KillRuntimeRequest{SandboxId: record.ID})
 		_ = closeShim()
+	}
+	if err := terminateShimProcess(sandboxDir, 5*time.Second); err != nil {
+		s.logger.Warn("terminate sandbox shim failed", "sandbox_id", record.ID, "error", err)
 	}
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateKilled, "kill"); err != nil {
 		return nil, err
@@ -251,7 +257,7 @@ func (s *sandboxService) KillSandbox(ctx context.Context, req *novitaboxv1.KillS
 	if err := s.store.DeleteSandbox(ctx, record.ID); err != nil {
 		return nil, err
 	}
-	if err := os.RemoveAll(layout.New(s.cfg.RootDir).SandboxDir(record.ID)); err != nil {
+	if err := os.RemoveAll(sandboxDir); err != nil {
 		return nil, fmt.Errorf("remove sandbox directory: %w", err)
 	}
 	if err := newSandboxNetworkManager(s.cfg).Cleanup(ctx, record.ID); err != nil {
@@ -405,7 +411,7 @@ func (s *sandboxService) runtimeSpecForSandbox(record store.SandboxRecord) *novi
 		},
 		Kernel: &novitaboxv1.KernelSpec{
 			KernelPath: paths.KernelPath,
-			KernelArgs: s.cfg.Template.KernelArgs,
+			KernelArgs: templateKernelArgs(s.cfg.Template.KernelArgs),
 		},
 		Rootfs: &novitaboxv1.RootfsSpec{
 			Path:   paths.RootfsPath,
@@ -438,6 +444,9 @@ func (s *sandboxService) completeRuntimeSpec(record store.SandboxRecord, spec *n
 	}
 	if spec.Kernel.KernelPath == "" {
 		spec.Kernel.KernelPath = paths.KernelPath
+	}
+	if len(spec.Kernel.KernelArgs) == 0 {
+		spec.Kernel.KernelArgs = templateKernelArgs(s.cfg.Template.KernelArgs)
 	}
 	if spec.Rootfs == nil {
 		spec.Rootfs = &novitaboxv1.RootfsSpec{
@@ -555,6 +564,51 @@ func ensureShim(ctx context.Context, cfg config.Config, socketPath string) error
 		return fmt.Errorf("wait for boxshim %q ready: %w", socketPath, err)
 	}
 	return nil
+}
+
+func terminateShimProcess(sandboxDir string, timeout time.Duration) error {
+	pidPath := filepath.Join(sandboxDir, "shim.pid")
+	raw, err := os.ReadFile(pidPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read shim pid: %w", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 0 {
+		return fmt.Errorf("parse shim pid %q: %w", strings.TrimSpace(string(raw)), err)
+	}
+
+	if waitProcessGone(pid, timeout) {
+		return nil
+	}
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		if errors.Is(err, os.ErrProcessDone) || errors.Is(err, syscall.ESRCH) {
+			return nil
+		}
+		return fmt.Errorf("terminate shim pid %d: %w", pid, err)
+	}
+	if waitProcessGone(pid, timeout) {
+		return nil
+	}
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return fmt.Errorf("kill shim pid %d: %w", pid, err)
+	}
+	return nil
+}
+
+func waitProcessGone(pid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if err := syscall.Kill(pid, 0); err != nil {
+			return errors.Is(err, syscall.ESRCH)
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func resolveShimBinary(path string) (string, error) {
@@ -754,7 +808,6 @@ func (s *artifactService) CreateTemplate(ctx context.Context, req *novitaboxv1.C
 		"from_template", req.GetFromTemplate(),
 		"image_id", req.GetImageId(),
 		"sandbox_id", req.GetSandboxId(),
-		"snapshot_enabled", s.cfg.Template.SnapshotEnabled,
 	)
 
 	l := layout.New(s.cfg.RootDir)
@@ -770,24 +823,15 @@ func (s *artifactService) CreateTemplate(ctx context.Context, req *novitaboxv1.C
 		return nil, err
 	}
 
-	if s.cfg.Template.SnapshotEnabled {
-		s.logger.Info("injecting boxd into template rootfs", "template_id", templateID, "boxd_bin", s.cfg.Template.BoxdBinaryPath)
-		if err := s.injectTemplateBoxd(ctx, paths.RootfsPath); err != nil {
-			s.logger.Error("inject boxd into template rootfs failed", "template_id", templateID, "error", err)
-			return nil, err
-		}
-		s.logger.Info("creating template snapshot", "template_id", templateID, "memfile_path", paths.MemfilePath, "snapfile_path", paths.SnapfilePath)
-		if err := s.createTemplateSnapshot(ctx, req, templateID, paths); err != nil {
-			s.logger.Error("create template snapshot failed", "template_id", templateID, "error", err)
-			return nil, err
-		}
-	} else {
-		if err := ensureFile(paths.MemfilePath); err != nil {
-			return nil, fmt.Errorf("create template memfile placeholder: %w", err)
-		}
-		if err := ensureFile(paths.SnapfilePath); err != nil {
-			return nil, fmt.Errorf("create template snapfile placeholder: %w", err)
-		}
+	s.logger.Info("injecting boxd into template rootfs", "template_id", templateID, "boxd_bin", s.cfg.Template.BoxdBinaryPath)
+	if err := s.injectTemplateBoxd(ctx, paths.RootfsPath); err != nil {
+		s.logger.Error("inject boxd into template rootfs failed", "template_id", templateID, "error", err)
+		return nil, err
+	}
+	s.logger.Info("creating template snapshot", "template_id", templateID, "memfile_path", paths.MemfilePath, "snapfile_path", paths.SnapfilePath)
+	if err := s.createTemplateSnapshot(ctx, req, templateID, paths); err != nil {
+		s.logger.Error("create template snapshot failed", "template_id", templateID, "error", err)
+		return nil, err
 	}
 
 	record := store.TemplateRecord{
@@ -814,6 +858,9 @@ func (s *artifactService) CreateTemplate(ctx context.Context, req *novitaboxv1.C
 }
 
 func (s *artifactService) injectTemplateBoxd(ctx context.Context, rootfsPath string) error {
+	if strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "stub") {
+		return nil
+	}
 	if s.cfg.Template.BoxdBinaryPath == "" {
 		return nil
 	}
@@ -856,6 +903,8 @@ func templateBoxdInitScript(boxdPath string, listenAddr string) string {
 mount -t proc proc /proc 2>/dev/null || true
 mount -t sysfs sysfs /sys 2>/dev/null || true
 mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mkdir -p /dev/pts 2>/dev/null || true
+mount -t devpts devpts /dev/pts 2>/dev/null || true
 exec ` + boxdPath + ` --addr ` + listenAddr + `
 `
 }
@@ -879,6 +928,15 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 	if s.cfg.Template.KernelPath == "" {
 		return errors.New("template snapshot build requires --template-kernel")
 	}
+	if strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "stub") {
+		if err := ensureFile(paths.MemfilePath); err != nil {
+			return fmt.Errorf("create template memfile placeholder: %w", err)
+		}
+		if err := ensureFile(paths.SnapfilePath); err != nil {
+			return fmt.Errorf("create template snapfile placeholder: %w", err)
+		}
+		return nil
+	}
 
 	buildID := "template-build-" + templateID
 	buildDir := filepath.Join(layout.New(s.cfg.RootDir).SandboxDir(buildID))
@@ -887,9 +945,7 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 	}
 
 	shimSocket := filepath.Join(buildDir, "shim.sock")
-	shimCfg := s.cfg
-	shimCfg.Boxshim.RuntimeDriver = "firecracker"
-	if err := ensureShim(ctx, shimCfg, shimSocket); err != nil {
+	if err := ensureShim(ctx, s.cfg, shimSocket); err != nil {
 		return fmt.Errorf("start template build shim: %w", err)
 	}
 
@@ -901,7 +957,7 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 
 	spec := &novitaboxv1.RuntimeSpec{
 		SandboxId:   buildID,
-		RuntimeType: novitaboxv1.RuntimeType_RUNTIME_TYPE_FIRECRACKER,
+		RuntimeType: runtimeTypeFromRecord(s.cfg.Boxshim.RuntimeDriver),
 		Machine: &novitaboxv1.MachineSpec{
 			Vcpu:     s.cfg.Template.VCPU,
 			MemoryMb: s.cfg.Template.MemoryMB,
@@ -1227,9 +1283,13 @@ func (s *artifactService) DeleteTemplate(ctx context.Context, req *novitaboxv1.D
 }
 
 func (s *artifactService) CreateImage(ctx context.Context, req *novitaboxv1.CreateImageRequest) (*novitaboxv1.ImageInfo, error) {
-	imageID := req.GetImageId()
+	imageID := strings.TrimSpace(req.GetImageId())
 	if imageID == "" {
-		return nil, status.Error(codes.InvalidArgument, "image_id is required")
+		generated, err := newImageID()
+		if err != nil {
+			return nil, fmt.Errorf("generate image id: %w", err)
+		}
+		imageID = generated
 	}
 	if _, err := s.store.GetImage(ctx, imageID); err == nil {
 		return nil, status.Error(codes.AlreadyExists, "image already exists")
@@ -1264,6 +1324,18 @@ func (s *artifactService) CreateImage(ctx context.Context, req *novitaboxv1.Crea
 	}
 
 	return imageRecordToProto(*created), nil
+}
+
+func newImageID() (string, error) {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz1234567890"
+	var b [20]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return "img-" + string(b[:]), nil
 }
 
 func (s *artifactService) materializeImageRootfs(ctx context.Context, req *novitaboxv1.CreateImageRequest, dest string) error {

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 )
 
 type ServiceOptions struct {
@@ -15,7 +16,6 @@ type ServiceOptions struct {
 	BoxshimBinaryPath     string
 	FirecrackerBinaryPath string
 	TemplateKernelPath    string
-	TemplateSnapshot      bool
 	TemplateSnapshotWait  uint32
 	TemplateAgentHealth   string
 	TemplateAgentExec     string
@@ -35,6 +35,9 @@ func ApplyServiceOptions(defaults Config, name string, opts ServiceOptions) (Con
 	cfg := defaults
 	cfg.RootDir = opts.RootDir
 	cfg.Storage.DBPath = opts.DBPath
+	if cfg.Storage.DBPath == "" {
+		cfg.Storage.DBPath = DefaultDBPath(cfg.RootDir)
+	}
 	if opts.BoxletAddr != "" {
 		cfg.Boxlet.Addr = opts.BoxletAddr
 	}
@@ -44,13 +47,21 @@ func ApplyServiceOptions(defaults Config, name string, opts ServiceOptions) (Con
 	if opts.BoxshimBinaryPath != "" {
 		cfg.Boxshim.BinaryPath = opts.BoxshimBinaryPath
 	}
+	if cfg.Boxshim.BinaryPath == "" {
+		cfg.Boxshim.BinaryPath = DefaultBoxshimBinaryPath(cfg.RootDir)
+	}
 	if opts.FirecrackerBinaryPath != "" {
 		cfg.Firecracker.BinaryPath = opts.FirecrackerBinaryPath
+	}
+	if cfg.Firecracker.BinaryPath == "" {
+		cfg.Firecracker.BinaryPath = DefaultFirecrackerBinaryPath(cfg.RootDir)
 	}
 	if opts.TemplateKernelPath != "" {
 		cfg.Template.KernelPath = opts.TemplateKernelPath
 	}
-	cfg.Template.SnapshotEnabled = opts.TemplateSnapshot
+	if cfg.Template.KernelPath == "" {
+		cfg.Template.KernelPath = DefaultKernelPath(cfg.RootDir)
+	}
 	if opts.TemplateSnapshotWait > 0 {
 		cfg.Template.SnapshotWaitSecs = opts.TemplateSnapshotWait
 	}
@@ -65,6 +76,9 @@ func ApplyServiceOptions(defaults Config, name string, opts ServiceOptions) (Con
 	}
 	if opts.TemplateBoxdBinary != "" {
 		cfg.Template.BoxdBinaryPath = opts.TemplateBoxdBinary
+	}
+	if cfg.Template.BoxdBinaryPath == "" {
+		cfg.Template.BoxdBinaryPath = DefaultBoxdBinaryPath(cfg.RootDir)
 	}
 	if opts.TemplateBoxdGuestPath != "" {
 		cfg.Template.BoxdGuestPath = opts.TemplateBoxdGuestPath
@@ -129,8 +143,34 @@ func ApplyBoxshimOptions(defaults Config, opts BoxshimOptions) Config {
 	cfg.Boxshim.RuntimeDriver = opts.RuntimeDriver
 	cfg.Firecracker.BinaryPath = opts.FirecrackerBinaryPath
 	cfg.Storage.DBPath = opts.DBPath
+	if cfg.Storage.DBPath == "" {
+		cfg.Storage.DBPath = DefaultDBPath(cfg.RootDir)
+	}
+	if cfg.Firecracker.BinaryPath == "" {
+		cfg.Firecracker.BinaryPath = DefaultFirecrackerBinaryPath(cfg.RootDir)
+	}
 
 	return cfg
+}
+
+func DefaultDBPath(rootDir string) string {
+	return filepath.Join(rootDir, "db", "novitabox.db")
+}
+
+func DefaultKernelPath(rootDir string) string {
+	return filepath.Join(rootDir, "vmlinux.bin")
+}
+
+func DefaultBoxdBinaryPath(rootDir string) string {
+	return filepath.Join(rootDir, "boxd")
+}
+
+func DefaultBoxshimBinaryPath(rootDir string) string {
+	return filepath.Join(rootDir, "boxshim")
+}
+
+func DefaultFirecrackerBinaryPath(rootDir string) string {
+	return filepath.Join(rootDir, "firecracker")
 }
 
 func withPort(addr string, port int) (string, error) {

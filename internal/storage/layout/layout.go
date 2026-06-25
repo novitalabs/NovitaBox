@@ -1,6 +1,10 @@
 package layout
 
-import "path/filepath"
+import (
+	"path/filepath"
+
+	"github.com/novitalabs/NovitaBox/internal/config"
+)
 
 type Layout struct {
 	root string
@@ -15,7 +19,7 @@ func (l Layout) SandboxDir(sandboxID string) string {
 }
 
 func (l Layout) DBPath() string {
-	return filepath.Join(l.root, "novitabox.db")
+	return config.DefaultDBPath(l.root)
 }
 
 func (l Layout) ImageDir(imageID string) string {

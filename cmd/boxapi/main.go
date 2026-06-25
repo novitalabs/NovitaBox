@@ -37,7 +37,7 @@ func main() {
 	cmd.Flags().StringVar(&opts.RootDir, "root", opts.RootDir, "NovitaBox root directory")
 	cmd.Flags().StringVar(&opts.Addr, "addr", opts.Addr, "boxapi listen address")
 	cmd.Flags().IntVar(&opts.Port, "port", 0, "boxapi listen port, overrides the port in --addr")
-	cmd.Flags().StringVar(&opts.DBPath, "db-path", opts.DBPath, "SQLite database path, defaults to $root/novitabox.db")
+	cmd.Flags().StringVar(&opts.DBPath, "db-path", opts.DBPath, "SQLite database path, defaults to $root/db/novitabox.db")
 	cmd.Flags().StringVar(&opts.BoxletAddr, "boxlet-addr", opts.BoxletAddr, "boxlet gRPC address")
 
 	if err := cmd.Execute(); err != nil {

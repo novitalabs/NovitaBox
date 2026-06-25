@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net/http"
@@ -43,6 +44,15 @@ func (h *Handler) CreateImage(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, response.ErrBadRequest("invalid image request body"))
 		return
+	}
+	req.ImageID = strings.TrimSpace(req.ImageID)
+	if req.ImageID == "" {
+		imageID, err := newImageID()
+		if err != nil {
+			response.Error(c, response.ErrInternal("generate image id failed"))
+			return
+		}
+		req.ImageID = imageID
 	}
 	if err := validateImageID(req.ImageID); err != nil {
 		response.Error(c, response.ErrBadRequest(err.Error()))
@@ -293,6 +303,18 @@ func validateImageID(imageID string) error {
 		return errors.New("imageID contains invalid path characters")
 	}
 	return nil
+}
+
+func newImageID() (string, error) {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz1234567890"
+	var b [20]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return "img-" + string(b[:]), nil
 }
 
 func shouldRemoveImageDir(rootDir string, imageID string, rootfsPath string) bool {

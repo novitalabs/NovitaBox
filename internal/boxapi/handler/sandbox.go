@@ -363,7 +363,7 @@ func newSandboxID() (string, error) {
 		b[i] = alphabet[int(b[i])%len(alphabet)]
 	}
 
-	return "i" + string(b[:]), nil
+	return "sbx-" + string(b[:]), nil
 }
 
 func sandboxRecordResponse(record store.SandboxRecord) sandboxResponse {

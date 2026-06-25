@@ -20,8 +20,6 @@ func main() {
 		RootDir:               defaults.RootDir,
 		Addr:                  defaults.Boxlet.Addr,
 		RuntimeDriver:         defaults.Boxshim.RuntimeDriver,
-		BoxshimBinaryPath:     defaults.Boxshim.BinaryPath,
-		FirecrackerBinaryPath: defaults.Firecracker.BinaryPath,
 		TemplateSnapshotWait:  defaults.Template.SnapshotWaitSecs,
 		TemplateAgentWait:     defaults.Template.AgentWaitSecs,
 		TemplateBoxdGuestPath: defaults.Template.BoxdGuestPath,
@@ -49,17 +47,14 @@ func main() {
 	cmd.Flags().StringVar(&opts.RootDir, "root", opts.RootDir, "NovitaBox root directory")
 	cmd.Flags().StringVar(&opts.Addr, "addr", opts.Addr, "boxlet listen address")
 	cmd.Flags().IntVar(&opts.Port, "port", 0, "boxlet listen port, overrides the port in --addr")
-	cmd.Flags().StringVar(&opts.DBPath, "db-path", opts.DBPath, "SQLite database path, defaults to $root/novitabox.db")
-	cmd.Flags().StringVar(&opts.RuntimeDriver, "runtime-driver", opts.RuntimeDriver, "runtime driver passed to boxshim: stub or firecracker")
-	cmd.Flags().StringVar(&opts.BoxshimBinaryPath, "boxshim-bin", opts.BoxshimBinaryPath, "boxshim binary path")
-	cmd.Flags().StringVar(&opts.FirecrackerBinaryPath, "firecracker-bin", opts.FirecrackerBinaryPath, "Firecracker binary path passed to boxshim")
-	cmd.Flags().StringVar(&opts.TemplateKernelPath, "template-kernel", opts.TemplateKernelPath, "kernel image used when building template snapshots")
-	cmd.Flags().BoolVar(&opts.TemplateSnapshot, "template-snapshot", opts.TemplateSnapshot, "start Firecracker and export memfile/snapfile during template build")
+	cmd.Flags().StringVar(&opts.DBPath, "db-path", opts.DBPath, "SQLite database path, defaults to $root/db/novitabox.db")
+	cmd.Flags().StringVar(&opts.RuntimeDriver, "runtime-driver", opts.RuntimeDriver, "runtime driver passed to boxshim, defaults to firecracker")
+	cmd.Flags().StringVar(&opts.TemplateKernelPath, "template-kernel", opts.TemplateKernelPath, "kernel image used when building template snapshots, defaults to $root/vmlinux.bin")
 	cmd.Flags().Uint32Var(&opts.TemplateSnapshotWait, "template-snapshot-wait", opts.TemplateSnapshotWait, "seconds to wait before exporting template snapshot")
 	cmd.Flags().StringVar(&opts.TemplateAgentHealth, "template-agent-health", opts.TemplateAgentHealth, "boxd health URL used before exporting template snapshot")
 	cmd.Flags().StringVar(&opts.TemplateAgentExec, "template-agent-exec", opts.TemplateAgentExec, "boxd exec URL used for template build commands")
 	cmd.Flags().Uint32Var(&opts.TemplateAgentWait, "template-agent-wait", opts.TemplateAgentWait, "seconds to wait for boxd health before exporting template snapshot")
-	cmd.Flags().StringVar(&opts.TemplateBoxdBinary, "template-boxd-bin", opts.TemplateBoxdBinary, "host boxd binary path injected into template rootfs")
+	cmd.Flags().StringVar(&opts.TemplateBoxdBinary, "template-boxd-bin", opts.TemplateBoxdBinary, "host boxd binary path injected into template rootfs, defaults to $root/boxd")
 	cmd.Flags().StringVar(&opts.TemplateBoxdGuestPath, "template-boxd-guest-path", opts.TemplateBoxdGuestPath, "guest path for injected boxd binary")
 	cmd.Flags().StringVar(&opts.TemplateBoxdGuestAddr, "template-boxd-guest-addr", opts.TemplateBoxdGuestAddr, "guest listen address for injected boxd")
 	cmd.Flags().BoolVar(&opts.NetworkEnabled, "network", opts.NetworkEnabled, "prepare sandbox network namespace and tap network")

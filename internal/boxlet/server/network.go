@@ -140,7 +140,7 @@ func (m sandboxNetworkManager) Ensure(ctx context.Context, spec *novitaboxv1.Net
 		return fmt.Errorf("configure namespace default route: %w", err)
 	}
 
-	if err := runCommand(ctx, "ip", "route", "replace", spec.GetHostAccessIp()+"/32", "via", veth.peerIP); err != nil {
+	if err := runCommand(ctx, "ip", "route", "replace", spec.GetHostAccessIp()+"/32", "via", veth.peerIP, "dev", hostVeth); err != nil {
 		return fmt.Errorf("configure host access route: %w", err)
 	}
 	if err := ensureNAT(ctx, spec); err != nil {
