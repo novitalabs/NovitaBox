@@ -940,9 +940,17 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 
 	buildID := "template-build-" + templateID
 	buildDir := filepath.Join(layout.New(s.cfg.RootDir).SandboxDir(buildID))
+	if err := os.RemoveAll(buildDir); err != nil {
+		return fmt.Errorf("remove stale template build sandbox: %w", err)
+	}
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return fmt.Errorf("create template snapshot build dir: %w", err)
 	}
+	defer func() {
+		if err := cleanupInternalSandbox(context.Background(), s.cfg, buildID); err != nil {
+			s.logger.Warn("cleanup template build sandbox failed", "sandbox_id", buildID, "error", err)
+		}
+	}()
 
 	shimSocket := filepath.Join(buildDir, "shim.sock")
 	if err := ensureShim(ctx, s.cfg, shimSocket); err != nil {
@@ -1339,29 +1347,201 @@ func newImageID() (string, error) {
 }
 
 func (s *artifactService) materializeImageRootfs(ctx context.Context, req *novitaboxv1.CreateImageRequest, dest string) error {
-	switch {
-	case req.GetDockerImage() != "":
-		return s.materializeDockerImage(ctx, req.GetDockerImage(), dest)
-	case req.GetTemplateId() != "":
-		record, err := s.store.GetTemplate(ctx, req.GetTemplateId())
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return status.Error(codes.NotFound, "template not found")
-			}
-			return err
-		}
-		return cloneOrCopyFile(record.RootfsPath, dest)
-	case req.GetSandboxId() != "":
-		if _, err := s.store.GetSandbox(ctx, req.GetSandboxId()); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return status.Error(codes.NotFound, "sandbox not found")
-			}
-			return err
-		}
-		return cloneOrCopyFile(sandboxRuntimePaths(s.cfg.RootDir, req.GetSandboxId()).RootfsPath, dest)
-	default:
-		return status.Error(codes.InvalidArgument, "one of template_id, sandbox_id, or docker_image is required")
+	if req.GetTemplateId() == "" {
+		return status.Error(codes.InvalidArgument, "template_id is required")
 	}
+	record, err := s.store.GetTemplate(ctx, req.GetTemplateId())
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return status.Error(codes.NotFound, "template not found")
+		}
+		return err
+	}
+	return s.exportTemplateImageRootfs(ctx, *record, dest)
+}
+
+func (s *artifactService) exportTemplateImageRootfs(ctx context.Context, template store.TemplateRecord, dest string) error {
+	if template.RootfsPath == "" {
+		return status.Error(codes.InvalidArgument, "template rootfs is required")
+	}
+	if template.MemfilePath == "" || template.SnapfilePath == "" {
+		return status.Error(codes.InvalidArgument, "template snapshot is required")
+	}
+	if strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "stub") {
+		return cloneOrCopyFile(template.RootfsPath, dest)
+	}
+
+	buildID := "image-build-" + filepath.Base(filepath.Dir(dest))
+	l := layout.New(s.cfg.RootDir)
+	buildDir := l.SandboxDir(buildID)
+	paths := sandboxRuntimePaths(s.cfg.RootDir, buildID)
+
+	if err := os.RemoveAll(buildDir); err != nil {
+		return fmt.Errorf("remove stale image build sandbox: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(paths.RootfsPath), 0o755); err != nil {
+		return fmt.Errorf("create image build snapshot directory: %w", err)
+	}
+	defer func() {
+		if err := cleanupInternalSandbox(context.Background(), s.cfg, buildID); err != nil {
+			s.logger.Warn("cleanup image build sandbox failed", "sandbox_id", buildID, "error", err)
+		}
+	}()
+
+	if err := cloneOrCopyFile(template.MemfilePath, paths.MemfilePath); err != nil {
+		return fmt.Errorf("prepare image build memfile from template %q: %w", template.ID, err)
+	}
+	if err := cloneOrCopyFile(template.SnapfilePath, paths.SnapfilePath); err != nil {
+		return fmt.Errorf("prepare image build snapfile from template %q: %w", template.ID, err)
+	}
+	if s.cfg.Template.KernelPath != "" {
+		if err := linkOrCopyFile(s.cfg.Template.KernelPath, paths.KernelPath); err != nil {
+			return fmt.Errorf("prepare image build kernel: %w", err)
+		}
+	}
+
+	shimSocket := filepath.Join(buildDir, "shim.sock")
+	if err := ensureShim(ctx, s.cfg, shimSocket); err != nil {
+		return fmt.Errorf("start image build shim: %w", err)
+	}
+
+	shim, closeShim, err := dialShim(ctx, shimSocket)
+	if err != nil {
+		return fmt.Errorf("dial image build shim: %w", err)
+	}
+	defer closeShim()
+
+	spec := s.imageBuildRuntimeSpec(buildID, template.RootfsPath, paths)
+	if strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "firecracker") && spec.GetKernel().GetKernelPath() == "" {
+		return errors.New("image export from template requires --template-kernel")
+	}
+	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
+		return fmt.Errorf("prepare image build network: %w", err)
+	}
+
+	return withWritableTemplateRootfs(template.RootfsPath, func(workRootfsPath string) error {
+		if _, err := shim.ResumeRuntime(ctx, &novitaboxv1.ResumeRuntimeRequest{RuntimeSpec: spec}); err != nil {
+			return fmt.Errorf("resume template runtime for image export: %w", err)
+		}
+		if _, err := shim.StopRuntime(ctx, &novitaboxv1.StopRuntimeRequest{
+			SandboxId:      buildID,
+			TimeoutSeconds: 30,
+		}); err != nil {
+			return fmt.Errorf("stop image build runtime: %w", err)
+		}
+		if err := cloneOrCopyFile(workRootfsPath, dest); err != nil {
+			return fmt.Errorf("export image rootfs from template %q: %w", template.ID, err)
+		}
+		return nil
+	})
+}
+
+func (s *artifactService) imageBuildRuntimeSpec(sandboxID string, rootfsPath string, paths sandboxRuntimeArtifactPaths) *novitaboxv1.RuntimeSpec {
+	runtimeType := runtimeTypeFromRecord(s.cfg.Boxshim.RuntimeDriver)
+	networkSpec, _ := newSandboxNetworkManager(s.cfg).Spec(sandboxID)
+	spec := &novitaboxv1.RuntimeSpec{
+		SandboxId:   sandboxID,
+		RuntimeType: runtimeType,
+		Machine: &novitaboxv1.MachineSpec{
+			Vcpu:     s.cfg.Template.VCPU,
+			MemoryMb: s.cfg.Template.MemoryMB,
+		},
+		Kernel: &novitaboxv1.KernelSpec{
+			KernelPath: paths.KernelPath,
+			KernelArgs: templateKernelArgs(s.cfg.Template.KernelArgs),
+		},
+		Rootfs: &novitaboxv1.RootfsSpec{
+			Path:   rootfsPath,
+			Format: "ext4",
+		},
+		Snapshot: &novitaboxv1.SnapshotSpec{
+			MemfilePath:  paths.MemfilePath,
+			SnapfilePath: paths.SnapfilePath,
+			SnapshotType: "full",
+		},
+		Network: networkSpec,
+		Agent: &novitaboxv1.AgentSpec{
+			Type:     "boxd",
+			Protocol: "grpc",
+			Port:     49983,
+		},
+	}
+	if s.cfg.Template.KernelPath == "" && !strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "firecracker") {
+		spec.Kernel.KernelPath = ""
+	}
+	return spec
+}
+
+func withWritableTemplateRootfs(rootfsPath string, fn func(string) error) error {
+	backupPath := rootfsPath + fmt.Sprintf(".image-export-backup-%d-%d", os.Getpid(), time.Now().UnixNano())
+	workPath := rootfsPath + fmt.Sprintf(".image-export-work-%d-%d", os.Getpid(), time.Now().UnixNano())
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale rootfs backup: %w", err)
+	}
+	if err := os.Remove(workPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale rootfs work copy: %w", err)
+	}
+	if err := cloneOrCopyFile(rootfsPath, workPath); err != nil {
+		return fmt.Errorf("create writable template rootfs copy: %w", err)
+	}
+
+	restored := false
+	defer func() {
+		if restored {
+			return
+		}
+		_ = os.Remove(rootfsPath)
+		_ = os.Rename(backupPath, rootfsPath)
+		_ = os.Remove(workPath)
+	}()
+
+	if err := os.Rename(rootfsPath, backupPath); err != nil {
+		_ = os.Remove(workPath)
+		return fmt.Errorf("backup template rootfs: %w", err)
+	}
+	if err := os.Rename(workPath, rootfsPath); err != nil {
+		_ = os.Rename(backupPath, rootfsPath)
+		return fmt.Errorf("activate writable template rootfs: %w", err)
+	}
+
+	runErr := fn(rootfsPath)
+	if restoreErr := restoreTemplateRootfs(rootfsPath, backupPath); restoreErr != nil {
+		if runErr != nil {
+			return fmt.Errorf("%w; additionally failed to restore template rootfs: %v", runErr, restoreErr)
+		}
+		return restoreErr
+	}
+	restored = true
+	if runErr != nil {
+		return runErr
+	}
+	return nil
+}
+
+func restoreTemplateRootfs(rootfsPath string, backupPath string) error {
+	if err := os.Remove(rootfsPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove writable template rootfs: %w", err)
+	}
+	if err := os.Rename(backupPath, rootfsPath); err != nil {
+		return fmt.Errorf("restore template rootfs: %w", err)
+	}
+	return nil
+}
+
+func cleanupInternalSandbox(ctx context.Context, cfg config.Config, sandboxID string) error {
+	sandboxDir := layout.New(cfg.RootDir).SandboxDir(sandboxID)
+	shimSocket := filepath.Join(sandboxDir, "shim.sock")
+	if shim, closeShim, err := dialShim(ctx, shimSocket); err == nil {
+		_, _ = shim.KillRuntime(ctx, &novitaboxv1.KillRuntimeRequest{SandboxId: sandboxID})
+		_ = closeShim()
+	}
+	if err := terminateShimProcess(sandboxDir, 5*time.Second); err != nil {
+		return err
+	}
+	if err := newSandboxNetworkManager(cfg).Cleanup(ctx, sandboxID); err != nil {
+		return err
+	}
+	return os.RemoveAll(sandboxDir)
 }
 
 func (s *artifactService) ListImages(ctx context.Context, _ *novitaboxv1.ListImagesRequest) (*novitaboxv1.ListImagesResponse, error) {

@@ -123,8 +123,6 @@ message ListTemplatesResponse {
 message CreateImageRequest {
   string image_id = 1;
   string template_id = 2;
-  string sandbox_id = 3;
-  string docker_image = 4;
   map<string, string> labels = 20;
 }
 

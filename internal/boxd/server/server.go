@@ -5,16 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"time"
 
 	"github.com/novitalabs/NovitaBox/internal/config"
 	"github.com/novitalabs/NovitaBox/internal/log"
-	"github.com/novitalabs/NovitaBox/internal/wsutil"
 	"golang.org/x/net/websocket"
 )
 
@@ -32,10 +29,12 @@ func New(cfg config.Config, logger *log.Logger) *Server {
 	mux.HandleFunc("/exec", s.handleExec)
 	mux.HandleFunc("/processes", s.handleProcesses)
 	mux.HandleFunc("/processes/", s.handleProcess)
-	mux.Handle("/shell", websocket.Server{
-		Handler:   websocket.Handler(s.handleShell),
-		Handshake: acceptWebSocket,
-	})
+	mux.HandleFunc("/process.Process/List", s.handleConnectList)
+	mux.HandleFunc("/process.Process/Start", s.handleConnectStart)
+	mux.HandleFunc("/process.Process/Connect", s.handleConnectAttach)
+	mux.HandleFunc("/process.Process/Update", s.handleConnectUpdate)
+	mux.HandleFunc("/process.Process/SendInput", s.handleConnectSendInput)
+	mux.HandleFunc("/process.Process/SendSignal", s.handleConnectSendSignal)
 	s.httpServer = &http.Server{
 		Addr:              cfg.Boxd.Addr,
 		Handler:           mux,
@@ -159,50 +158,4 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
 	})
-}
-
-func (s *Server) handleShell(ws *websocket.Conn) {
-	shellPath := ws.Request().URL.Query().Get("cmd")
-	cols := parseUint16(ws.Request().URL.Query().Get("cols"), 80)
-	rows := parseUint16(ws.Request().URL.Query().Get("rows"), 24)
-
-	cmd, terminal, err := startShellProcess(shellPath, cols, rows)
-	if err != nil {
-		s.logger.Error("start shell failed", "error", err)
-		_ = websocket.Message.Send(ws, []byte(err.Error()))
-		wsutil.CloseWebSocket(ws)
-		return
-	}
-	defer func() {
-		_ = terminal.Close()
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-		wsutil.CloseWebSocket(ws)
-	}()
-
-	errCh := make(chan error, 2)
-	go func() {
-		errCh <- wsutil.CopyWebSocketToWriter(terminal, ws)
-	}()
-	go func() {
-		errCh <- wsutil.CopyReaderToWebSocket(ws, terminal)
-	}()
-
-	err = <-errCh
-	if err != nil && !errors.Is(err, io.EOF) {
-		s.logger.Warn("shell stream closed with error", "error", err)
-	}
-}
-
-func parseUint16(raw string, fallback uint16) uint16 {
-	if raw == "" {
-		return fallback
-	}
-	value, err := strconv.ParseUint(raw, 10, 16)
-	if err != nil || value == 0 {
-		return fallback
-	}
-	return uint16(value)
 }

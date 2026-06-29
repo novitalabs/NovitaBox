@@ -11,13 +11,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func startShellProcess(shellPath string, cols uint16, rows uint16) (*exec.Cmd, *os.File, error) {
-	if shellPath == "" {
-		shellPath = "/bin/sh"
-	}
-	return startPTYProcess(shellPath, nil, "", nil, cols, rows)
-}
-
 func startPTYProcess(cmdPath string, args []string, cwd string, env []string, cols uint16, rows uint16) (*exec.Cmd, *os.File, error) {
 	if cmdPath == "" {
 		cmdPath = "/bin/sh"
@@ -55,9 +48,13 @@ func startPTYProcess(cmdPath string, args []string, cwd string, env []string, co
 	}
 	_ = unix.IoctlSetWinsize(int(ptm.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: cols, Row: rows})
 
-	cmd := exec.Command(cmdPath, args...)
-	cmd.Env = append(os.Environ(), env...)
-	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	cmdEnv := processEnv(append(env, "TERM=xterm-256color"))
+	resolvedPath, err := resolveProcessPath(cmdPath, cmdEnv)
+	if err != nil {
+		return nil, nil, err
+	}
+	cmd := exec.Command(resolvedPath, args...)
+	cmd.Env = cmdEnv
 	if cwd != "" {
 		cmd.Dir = cwd
 	}

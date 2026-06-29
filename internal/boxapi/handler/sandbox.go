@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,6 +68,22 @@ type sandboxInfoResponse struct {
 
 type listSandboxesResponse struct {
 	Sandboxes []sandboxInfoResponse `json:"sandboxes"`
+}
+
+type sandboxListItemResponse struct {
+	Alias        *string           `json:"alias,omitempty"`
+	ClientID     string            `json:"clientID"`
+	CPUCount     int32             `json:"cpuCount"`
+	DiskSizeMB   int64             `json:"diskSizeMB"`
+	EndAt        string            `json:"endAt"`
+	EnvdVersion  string            `json:"envdVersion"`
+	MemoryMB     int32             `json:"memoryMB"`
+	Metadata     map[string]string `json:"metadata"`
+	SandboxID    string            `json:"sandboxID"`
+	StartedAt    string            `json:"startedAt"`
+	State        string            `json:"state"`
+	TemplateID   string            `json:"templateID"`
+	VolumeMounts []any             `json:"volumeMounts"`
 }
 
 type snapshotResponse struct {
@@ -188,6 +205,33 @@ func (h *Handler) ListSandboxes(c *gin.Context) {
 		out.Sandboxes = append(out.Sandboxes, sandboxRecordInfoResponse(record))
 	}
 	response.JSON(c, http.StatusOK, out)
+}
+
+func (h *Handler) ListSandboxesV2(c *gin.Context) {
+	items, err := h.listSandboxItems(c)
+	if err != nil {
+		response.Error(c, response.ErrInternal(err.Error()))
+		return
+	}
+
+	items = filterSandboxItemsByState(items, c.QueryArray("state"), c.Query("state"))
+
+	offset, err := parseSandboxListOffset(c.Query("nextToken"))
+	if err != nil {
+		response.Error(c, response.ErrBadRequest("invalid nextToken"))
+		return
+	}
+	limit, err := parseSandboxListLimit(c.Query("limit"))
+	if err != nil {
+		response.Error(c, response.ErrBadRequest("invalid limit"))
+		return
+	}
+	items, nextToken := paginateSandboxItems(items, offset, limit)
+	if nextToken != "" {
+		c.Header("X-Next-Token", nextToken)
+	}
+
+	response.JSON(c, http.StatusOK, items)
 }
 
 func (h *Handler) GetSandbox(c *gin.Context) {
@@ -323,6 +367,85 @@ func (h *Handler) ResumeSandbox(c *gin.Context) {
 	})
 }
 
+func (h *Handler) ConnectSandbox(c *gin.Context) {
+	sandboxID := c.Param("sandbox_id")
+	if sandboxID == "" {
+		response.Error(c, response.ErrBadRequest("sandboxID is required"))
+		return
+	}
+
+	if h.sandboxClient != nil {
+		got, err := h.sandboxClient.GetSandbox(c.Request.Context(), &novitaboxv1.GetSandboxRequest{SandboxId: sandboxID})
+		if err != nil {
+			h.respondSandboxBoxletError(c, err, "get sandbox through boxlet failed")
+			return
+		}
+		if protoSandboxState(got.GetState()) == string(sandbox.StatePaused) {
+			got, err = h.sandboxClient.ResumeSandbox(c.Request.Context(), &novitaboxv1.ResumeSandboxRequest{SandboxId: sandboxID})
+			if err != nil {
+				h.respondSandboxBoxletError(c, err, "connect sandbox through boxlet failed")
+				return
+			}
+		}
+		response.JSON(c, http.StatusOK, sandboxProtoResponse(got))
+		return
+	}
+	if h.store == nil {
+		response.Error(c, response.ErrInternal("storage is not configured"))
+		return
+	}
+
+	record, err := h.store.GetSandbox(c.Request.Context(), sandboxID)
+	if err != nil {
+		h.respondSandboxStoreError(c, err, "get sandbox failed")
+		return
+	}
+	if record.State == sandbox.StatePaused {
+		if err := h.updateLocalSandboxState(c, sandboxID, sandbox.StateResuming, "connect"); err != nil {
+			h.respondSandboxStoreError(c, err, "mark sandbox resuming failed")
+			return
+		}
+		if err := h.updateLocalSandboxState(c, sandboxID, sandbox.StateRunning, "connect"); err != nil {
+			h.respondSandboxStoreError(c, err, "mark sandbox running failed")
+			return
+		}
+		record, err = h.store.GetSandbox(c.Request.Context(), sandboxID)
+		if err != nil {
+			h.respondSandboxStoreError(c, err, "load sandbox failed")
+			return
+		}
+	}
+
+	response.JSON(c, http.StatusOK, sandboxRecordResponse(*record))
+}
+
+func (h *Handler) SetSandboxTimeout(c *gin.Context) {
+	sandboxID := c.Param("sandbox_id")
+	if sandboxID == "" {
+		response.Error(c, response.ErrBadRequest("sandboxID is required"))
+		return
+	}
+
+	if h.sandboxClient != nil {
+		if _, err := h.sandboxClient.GetSandbox(c.Request.Context(), &novitaboxv1.GetSandboxRequest{SandboxId: sandboxID}); err != nil {
+			h.respondSandboxBoxletError(c, err, "get sandbox through boxlet failed")
+			return
+		}
+		c.Status(http.StatusNoContent)
+		return
+	}
+	if h.store == nil {
+		response.Error(c, response.ErrInternal("storage is not configured"))
+		return
+	}
+	if _, err := h.store.GetSandbox(c.Request.Context(), sandboxID); err != nil {
+		h.respondSandboxStoreError(c, err, "get sandbox failed")
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) PoweroffSandbox(c *gin.Context) {
 	h.transitionSandbox(c, "poweroff", sandbox.StateStopping, sandbox.StateStopped, func(sandboxID string) error {
 		if h.sandboxClient == nil {
@@ -372,7 +495,7 @@ func sandboxRecordResponse(record store.SandboxRecord) sandboxResponse {
 		ClientID:           "",
 		Domain:             nil,
 		EnvdAccessToken:    nil,
-		EnvdVersion:        "",
+		EnvdVersion:        defaultSandboxEnvdVersion,
 		SandboxID:          record.ID,
 		TemplateID:         record.TemplateID,
 		TrafficAccessToken: nil,
@@ -385,7 +508,7 @@ func sandboxProtoResponse(record *novitaboxv1.SandboxInfo) sandboxResponse {
 		ClientID:           "",
 		Domain:             nil,
 		EnvdAccessToken:    nil,
-		EnvdVersion:        "",
+		EnvdVersion:        defaultSandboxEnvdVersion,
 		SandboxID:          record.GetSandboxId(),
 		TemplateID:         record.GetTemplateId(),
 		TrafficAccessToken: nil,
@@ -551,6 +674,160 @@ func sandboxProtoInfoResponse(info *novitaboxv1.SandboxInfo) sandboxInfoResponse
 		CreatedAtUnix: info.GetCreatedAtUnix(),
 		UpdatedAtUnix: info.GetUpdatedAtUnix(),
 	}
+}
+
+func (h *Handler) listSandboxItems(c *gin.Context) ([]sandboxListItemResponse, error) {
+	if h.sandboxClient != nil {
+		list, err := h.sandboxClient.ListSandboxes(c.Request.Context(), &novitaboxv1.ListSandboxesRequest{})
+		if err != nil {
+			return nil, fmt.Errorf("list sandboxes through boxlet failed")
+		}
+
+		out := make([]sandboxListItemResponse, 0, len(list.GetSandboxes()))
+		for _, item := range list.GetSandboxes() {
+			out = append(out, sandboxProtoListItemResponse(item))
+		}
+		return out, nil
+	}
+	if h.store == nil {
+		return nil, fmt.Errorf("storage is not configured")
+	}
+
+	records, err := h.store.ListSandboxes(c.Request.Context())
+	if err != nil {
+		return nil, fmt.Errorf("list sandboxes failed")
+	}
+
+	out := make([]sandboxListItemResponse, 0, len(records))
+	for _, record := range records {
+		out = append(out, sandboxRecordListItemResponse(record))
+	}
+	return out, nil
+}
+
+func sandboxRecordListItemResponse(record store.SandboxRecord) sandboxListItemResponse {
+	startedAt := record.CreatedAt
+	if startedAt.IsZero() {
+		startedAt = time.Unix(0, 0).UTC()
+	}
+	updatedAt := record.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = startedAt
+	}
+
+	return sandboxListItemResponse{
+		Alias:        nil,
+		ClientID:     "",
+		CPUCount:     defaultTemplateCPUCount,
+		DiskSizeMB:   0,
+		EndAt:        updatedAt.UTC().Format(time.RFC3339),
+		EnvdVersion:  defaultSandboxEnvdVersion,
+		MemoryMB:     defaultTemplateMemoryMB,
+		Metadata:     map[string]string{},
+		SandboxID:    record.ID,
+		StartedAt:    startedAt.UTC().Format(time.RFC3339),
+		State:        string(record.State),
+		TemplateID:   record.TemplateID,
+		VolumeMounts: []any{},
+	}
+}
+
+func sandboxProtoListItemResponse(info *novitaboxv1.SandboxInfo) sandboxListItemResponse {
+	startedAt := unixSecondsToTime(info.GetCreatedAtUnix())
+	updatedAt := unixSecondsToTime(info.GetUpdatedAtUnix())
+	if updatedAt.IsZero() {
+		updatedAt = startedAt
+	}
+
+	return sandboxListItemResponse{
+		Alias:        nil,
+		ClientID:     "",
+		CPUCount:     defaultTemplateCPUCount,
+		DiskSizeMB:   0,
+		EndAt:        updatedAt.UTC().Format(time.RFC3339),
+		EnvdVersion:  defaultSandboxEnvdVersion,
+		MemoryMB:     defaultTemplateMemoryMB,
+		Metadata:     map[string]string{},
+		SandboxID:    info.GetSandboxId(),
+		StartedAt:    startedAt.UTC().Format(time.RFC3339),
+		State:        protoSandboxState(info.GetState()),
+		TemplateID:   info.GetTemplateId(),
+		VolumeMounts: []any{},
+	}
+}
+
+func unixSecondsToTime(ts int64) time.Time {
+	if ts <= 0 {
+		return time.Unix(0, 0).UTC()
+	}
+	return time.Unix(ts, 0).UTC()
+}
+
+func filterSandboxItemsByState(items []sandboxListItemResponse, queryValues []string, raw string) []sandboxListItemResponse {
+	states := map[string]struct{}{}
+	for _, value := range queryValues {
+		for _, state := range strings.Split(value, ",") {
+			state = strings.TrimSpace(state)
+			if state != "" {
+				states[state] = struct{}{}
+			}
+		}
+	}
+	if len(states) == 0 && raw != "" {
+		for _, state := range strings.Split(raw, ",") {
+			state = strings.TrimSpace(state)
+			if state != "" {
+				states[state] = struct{}{}
+			}
+		}
+	}
+	if len(states) == 0 {
+		return items
+	}
+
+	out := make([]sandboxListItemResponse, 0, len(items))
+	for _, item := range items {
+		if _, ok := states[item.State]; ok {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func parseSandboxListOffset(value string) (int, error) {
+	if value == "" {
+		return 0, nil
+	}
+	offset, err := strconv.Atoi(value)
+	if err != nil || offset < 0 {
+		return 0, fmt.Errorf("invalid offset")
+	}
+	return offset, nil
+}
+
+func parseSandboxListLimit(value string) (int, error) {
+	if value == "" {
+		return 100, nil
+	}
+	limit, err := strconv.Atoi(value)
+	if err != nil || limit < 0 {
+		return 0, fmt.Errorf("invalid limit")
+	}
+	if limit == 0 || limit > 1000 {
+		return 1000, nil
+	}
+	return limit, nil
+}
+
+func paginateSandboxItems(items []sandboxListItemResponse, offset int, limit int) ([]sandboxListItemResponse, string) {
+	if offset >= len(items) {
+		return []sandboxListItemResponse{}, ""
+	}
+	end := offset + limit
+	if end >= len(items) {
+		return items[offset:], ""
+	}
+	return items[offset:end], strconv.Itoa(end)
 }
 
 func snapshotRecordResponse(record store.SnapshotRecord) snapshotResponse {

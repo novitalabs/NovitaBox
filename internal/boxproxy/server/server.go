@@ -19,7 +19,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-const shellPrefix = "/v1/sandboxes/"
+const sandboxIDHeader = "Novita-Sandbox-Id"
 
 type Server struct {
 	cfg        config.Config
@@ -31,7 +31,7 @@ func New(cfg config.Config, logger *log.Logger) *Server {
 	s := &Server{cfg: cfg, logger: logger}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
-	mux.HandleFunc(shellPrefix, s.handleSandbox)
+	mux.HandleFunc("/", s.handleSandbox)
 	s.httpServer = &http.Server{
 		Addr:              cfg.BoxProxy.Addr,
 		Handler:           mux,
@@ -91,12 +91,13 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSandbox(w http.ResponseWriter, r *http.Request) {
-	sandboxID, rest, ok := parseSandboxPath(r.URL.Path)
-	if !ok {
+	sandboxID := sandboxIDFromRequest(r)
+	rest := strings.TrimPrefix(r.URL.Path, "/")
+	if sandboxID == "" || rest == "" {
 		http.NotFound(w, r)
 		return
 	}
-	if rest == "shell" || isProcessConnectPath(rest) {
+	if isProcessConnectPath(rest) {
 		websocket.Server{
 			Handler:   websocket.Handler(s.handleSandboxWebSocket),
 			Handshake: acceptWebSocket,
@@ -107,17 +108,25 @@ func (s *Server) handleSandbox(w http.ResponseWriter, r *http.Request) {
 		s.proxySandboxHTTP(w, r, sandboxID, rest)
 		return
 	}
+	if strings.HasPrefix(rest, "process.Process/") {
+		s.proxySandboxHTTP(w, r, sandboxID, rest)
+		return
+	}
 	http.NotFound(w, r)
 }
 
 func (s *Server) handleSandboxWebSocket(client *websocket.Conn) {
-	sandboxID, rest, ok := parseSandboxPath(client.Request().URL.Path)
-	if !ok {
+	sandboxID := sandboxIDFromRequest(client.Request())
+	rest := strings.TrimPrefix(client.Request().URL.Path, "/")
+	if sandboxID == "" || rest == "" {
 		_ = websocket.Message.Send(client, []byte("unsupported sandbox websocket route"))
 		wsutil.CloseWebSocket(client)
 		return
 	}
+	s.proxySandboxWebSocket(client, sandboxID, rest)
+}
 
+func (s *Server) proxySandboxWebSocket(client *websocket.Conn, sandboxID string, rest string) {
 	targetURL, err := s.boxdWebSocketURL(sandboxID, rest, client.Request().URL.Query())
 	if err != nil {
 		s.logger.Error("resolve sandbox websocket target failed", "sandbox_id", sandboxID, "path", rest, "error", err)
@@ -138,13 +147,9 @@ func (s *Server) handleSandboxWebSocket(client *websocket.Conn) {
 	defer wsutil.CloseWebSocket(client)
 
 	s.logger.Info("proxying sandbox websocket", "sandbox_id", sandboxID, "target", targetURL)
-	var clientInputTransform func([]byte) []byte
-	if client.Request().URL.Query().Get("lineMode") == "true" {
-		clientInputTransform = wsutil.AppendNewline
-	}
 	errCh := make(chan error, 2)
 	go func() {
-		errCh <- wsutil.CopyWebSocketWithTransform(guest, client, clientInputTransform)
+		errCh <- wsutil.CopyWebSocket(guest, client)
 	}()
 	go func() {
 		errCh <- wsutil.CopyWebSocket(client, guest)
@@ -181,7 +186,26 @@ func (s *Server) proxySandboxHTTP(w http.ResponseWriter, r *http.Request, sandbo
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	copyResponseBody(w, resp.Body)
+}
+
+func copyResponseBody(w http.ResponseWriter, body io.Reader) {
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 32*1024)
+	for {
+		n, readErr := body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if readErr != nil {
+			return
+		}
+	}
 }
 
 func (s *Server) boxdWebSocketURL(sandboxID string, rest string, query url.Values) (string, error) {
@@ -232,26 +256,37 @@ func (s *Server) boxdHost(sandboxID string) (string, error) {
 	return net.JoinHostPort(hostIP, port), nil
 }
 
-func parseSandboxPath(path string) (string, string, bool) {
-	rest := strings.TrimPrefix(path, shellPrefix)
-	if rest == path {
-		return "", "", false
+func sandboxIDFromRequest(r *http.Request) string {
+	if sandboxID := r.Header.Get(sandboxIDHeader); sandboxID != "" {
+		return sandboxID
 	}
-	parts := strings.SplitN(strings.Trim(rest, "/"), "/", 2)
+	if sandboxID := r.URL.Query().Get("sandboxID"); sandboxID != "" {
+		return sandboxID
+	}
+	return sandboxIDFromHost(r.Host)
+}
+
+func sandboxIDFromHost(host string) string {
+	hostname := host
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		hostname = parsedHost
+	}
+	firstLabel := strings.SplitN(hostname, ".", 2)[0]
+	parts := strings.SplitN(firstLabel, "-", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", false
+		return ""
 	}
-	return parts[0], parts[1], true
+	return parts[1]
 }
 
 func boxdPathFromSandboxRest(rest string) (string, error) {
-	if rest == "shell" {
-		return "/shell", nil
-	}
 	if rest == "processes" {
 		return "/processes", nil
 	}
 	if strings.HasPrefix(rest, "processes/") {
+		return "/" + rest, nil
+	}
+	if strings.HasPrefix(rest, "process.Process/") {
 		return "/" + rest, nil
 	}
 	return "", fmt.Errorf("unsupported sandbox route %q", rest)

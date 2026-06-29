@@ -79,8 +79,14 @@ func runExec(proxyAddr string, sandboxID string, command []string, cwd string, i
 	}
 
 	base := strings.TrimRight(proxyAddr, "/")
-	startURL := fmt.Sprintf("%s/v1/sandboxes/%s/processes", base, url.PathEscape(sandboxID))
-	resp, err := http.Post(startURL, "application/json", bytes.NewReader(body))
+	startURL := fmt.Sprintf("%s/processes", base)
+	req, err := http.NewRequest(http.MethodPost, startURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build start process request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Novita-Sandbox-Id", sandboxID)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("start process: %w", err)
 	}
@@ -150,8 +156,10 @@ func processWebSocketURL(base string, sandboxID string, processID string) (strin
 	default:
 		return "", fmt.Errorf("unsupported proxy scheme %q", u.Scheme)
 	}
-	u.Path = fmt.Sprintf("/v1/sandboxes/%s/processes/%s/connect", url.PathEscape(sandboxID), url.PathEscape(processID))
-	u.RawQuery = ""
+	u.Path = fmt.Sprintf("/processes/%s/connect", url.PathEscape(processID))
+	q := u.Query()
+	q.Set("sandboxID", sandboxID)
+	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
 
@@ -163,11 +171,20 @@ func resizeLoop(base string, sandboxID string, processID string) {
 		<-ch
 		rows, cols := terminalSize()
 		payload, _ := json.Marshal(map[string]uint16{"rows": rows, "cols": cols})
-		_, _ = http.Post(
-			fmt.Sprintf("%s/v1/sandboxes/%s/processes/%s/resize", strings.TrimRight(base, "/"), url.PathEscape(sandboxID), url.PathEscape(processID)),
-			"application/json",
+		req, err := http.NewRequest(
+			http.MethodPost,
+			fmt.Sprintf("%s/processes/%s/resize", strings.TrimRight(base, "/"), url.PathEscape(processID)),
 			bytes.NewReader(payload),
 		)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Novita-Sandbox-Id", sandboxID)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			_ = resp.Body.Close()
+		}
 	}
 }
 

@@ -179,24 +179,45 @@ func TestArtifactServiceTemplateCRUD(t *testing.T) {
 
 func TestArtifactServiceImageCRUD(t *testing.T) {
 	root := t.TempDir()
-	source := filepath.Join(root, "source-rootfs.ext4")
-	if err := os.WriteFile(source, []byte("rootfs"), 0o644); err != nil {
-		t.Fatalf("write source rootfs: %v", err)
-	}
 
 	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
 	if err != nil {
 		t.Fatalf("open sqlite store: %v", err)
 	}
 	defer st.Close()
+	templateDir := filepath.Join(root, "templates", "tpl-source")
+	templateRootfs := filepath.Join(templateDir, "rootfs.ext4")
+	templateMemfile := filepath.Join(templateDir, "memfile")
+	templateSnapfile := filepath.Join(templateDir, "snapfile")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatalf("create template dir: %v", err)
+	}
+	if err := os.WriteFile(templateRootfs, []byte("rootfs"), 0o644); err != nil {
+		t.Fatalf("write template rootfs: %v", err)
+	}
+	if err := os.WriteFile(templateMemfile, []byte("mem"), 0o644); err != nil {
+		t.Fatalf("write template memfile: %v", err)
+	}
+	if err := os.WriteFile(templateSnapfile, []byte("snap"), 0o644); err != nil {
+		t.Fatalf("write template snapfile: %v", err)
+	}
+	if err := st.CreateTemplate(context.Background(), store.TemplateRecord{
+		ID:           "tpl-source",
+		RootfsPath:   templateRootfs,
+		MemfilePath:  templateMemfile,
+		SnapfilePath: templateSnapfile,
+	}); err != nil {
+		t.Fatalf("create template record: %v", err)
+	}
 
 	cfg := config.Default()
 	cfg.RootDir = root
+	cfg.Boxshim.RuntimeDriver = "stub"
 	svc := newArtifactService(cfg, log.NewNop(), st)
 
 	if _, err := svc.CreateImage(context.Background(), &novitaboxv1.CreateImageRequest{
-		ImageId:     "img-crud",
-		DockerImage: source,
+		ImageId:    "img-crud",
+		TemplateId: "tpl-source",
 	}); err != nil {
 		t.Fatalf("CreateImage() error = %v", err)
 	}
@@ -236,23 +257,43 @@ func TestArtifactServiceImageCRUD(t *testing.T) {
 
 func TestArtifactServiceCreateImageGeneratesID(t *testing.T) {
 	root := t.TempDir()
-	source := filepath.Join(root, "source-rootfs.ext4")
-	if err := os.WriteFile(source, []byte("rootfs"), 0o644); err != nil {
-		t.Fatalf("write source rootfs: %v", err)
-	}
-
 	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
 	if err != nil {
 		t.Fatalf("open sqlite store: %v", err)
 	}
 	defer st.Close()
+	templateDir := filepath.Join(root, "templates", "tpl-source")
+	templateRootfs := filepath.Join(templateDir, "rootfs.ext4")
+	templateMemfile := filepath.Join(templateDir, "memfile")
+	templateSnapfile := filepath.Join(templateDir, "snapfile")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatalf("create template dir: %v", err)
+	}
+	if err := os.WriteFile(templateRootfs, []byte("rootfs"), 0o644); err != nil {
+		t.Fatalf("write template rootfs: %v", err)
+	}
+	if err := os.WriteFile(templateMemfile, []byte("mem"), 0o644); err != nil {
+		t.Fatalf("write template memfile: %v", err)
+	}
+	if err := os.WriteFile(templateSnapfile, []byte("snap"), 0o644); err != nil {
+		t.Fatalf("write template snapfile: %v", err)
+	}
+	if err := st.CreateTemplate(context.Background(), store.TemplateRecord{
+		ID:           "tpl-source",
+		RootfsPath:   templateRootfs,
+		MemfilePath:  templateMemfile,
+		SnapfilePath: templateSnapfile,
+	}); err != nil {
+		t.Fatalf("create template record: %v", err)
+	}
 
 	cfg := config.Default()
 	cfg.RootDir = root
+	cfg.Boxshim.RuntimeDriver = "stub"
 	svc := newArtifactService(cfg, log.NewNop(), st)
 
 	got, err := svc.CreateImage(context.Background(), &novitaboxv1.CreateImageRequest{
-		DockerImage: source,
+		TemplateId: "tpl-source",
 	})
 	if err != nil {
 		t.Fatalf("CreateImage() error = %v", err)
@@ -267,6 +308,42 @@ func TestArtifactServiceCreateImageGeneratesID(t *testing.T) {
 	wantRootfs := filepath.Join(root, "images", got.GetImageId(), "rootfs.ext4")
 	if got.GetRootfsPath() != wantRootfs {
 		t.Fatalf("rootfs path = %q, want %q", got.GetRootfsPath(), wantRootfs)
+	}
+}
+
+func TestWithWritableTemplateRootfsRestoresOriginalAndExportsWorkCopy(t *testing.T) {
+	root := t.TempDir()
+	rootfsPath := filepath.Join(root, "rootfs.ext4")
+	if err := os.WriteFile(rootfsPath, []byte("original"), 0o644); err != nil {
+		t.Fatalf("write rootfs: %v", err)
+	}
+	exportPath := filepath.Join(root, "image-rootfs.ext4")
+
+	if err := withWritableTemplateRootfs(rootfsPath, func(workRootfsPath string) error {
+		if workRootfsPath != rootfsPath {
+			t.Fatalf("work rootfs path = %q, want %q", workRootfsPath, rootfsPath)
+		}
+		if err := os.WriteFile(workRootfsPath, []byte("flushed"), 0o644); err != nil {
+			return err
+		}
+		return cloneOrCopyFile(workRootfsPath, exportPath)
+	}); err != nil {
+		t.Fatalf("withWritableTemplateRootfs() error = %v", err)
+	}
+
+	original, err := os.ReadFile(rootfsPath)
+	if err != nil {
+		t.Fatalf("read restored rootfs: %v", err)
+	}
+	if string(original) != "original" {
+		t.Fatalf("restored rootfs = %q, want original", string(original))
+	}
+	exported, err := os.ReadFile(exportPath)
+	if err != nil {
+		t.Fatalf("read exported rootfs: %v", err)
+	}
+	if string(exported) != "flushed" {
+		t.Fatalf("exported rootfs = %q, want flushed", string(exported))
 	}
 }
 
