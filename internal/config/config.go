@@ -78,7 +78,7 @@ func Default() Config {
 		Template: TemplateBuildConfig{
 			SnapshotWaitSecs: 3,
 			AgentWaitSecs:    30,
-			BoxdGuestPath:    "/novitabox/boxd",
+			BoxdGuestPath:    "/novitabox/agent/boxd",
 			BoxdGuestAddr:    "0.0.0.0:49983",
 			VCPU:             1,
 			MemoryMB:         512,

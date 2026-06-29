@@ -384,7 +384,12 @@ func TestSandboxServiceCreateFromTemplatePreparesRuntimeFiles(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.RootDir = root
+	cfg.Boxshim.RuntimeDriver = "stub"
 	cfg.Template.KernelPath = kernelPath
+	cfg.Template.BoxdBinaryPath = filepath.Join(root, "boxd")
+	if err := os.WriteFile(cfg.Template.BoxdBinaryPath, []byte("boxd"), 0o755); err != nil {
+		t.Fatalf("write boxd: %v", err)
+	}
 	svc := newSandboxService(cfg, log.NewNop(), st)
 
 	spec := svc.completeRuntimeSpec(store.SandboxRecord{
@@ -492,8 +497,11 @@ func assertFileContent(t *testing.T, path string, want string) {
 }
 
 func TestTemplateBoxdInitScript(t *testing.T) {
-	script := templateBoxdInitScript("/novitabox/boxd", "0.0.0.0:49983")
-	if !strings.Contains(script, "exec /novitabox/boxd --addr 0.0.0.0:49983") {
+	script := templateBoxdInitScript("/novitabox/agent/boxd", "0.0.0.0:49983")
+	if !strings.Contains(script, "mount -o ro /dev/vdb /novitabox/agent") {
+		t.Fatalf("init script does not mount readonly agent disk: %s", script)
+	}
+	if !strings.Contains(script, "exec /novitabox/agent/boxd --addr 0.0.0.0:49983") {
 		t.Fatalf("init script does not start boxd: %s", script)
 	}
 	if strings.Contains(script, "exec /sbin/init") || strings.Contains(script, "exec /bin/sh") {

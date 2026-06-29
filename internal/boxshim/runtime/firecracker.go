@@ -456,6 +456,22 @@ func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitabo
 	}); err != nil {
 		return fmt.Errorf("configure firecracker rootfs: %w", err)
 	}
+	for _, drive := range spec.GetExtraDrives() {
+		if drive.GetDriveId() == "" {
+			return errors.New("runtime_spec.extra_drives.drive_id is required for firecracker")
+		}
+		if drive.GetPath() == "" {
+			return fmt.Errorf("runtime_spec.extra_drives[%s].path is required for firecracker", drive.GetDriveId())
+		}
+		if err := d.client.put(ctx, "/drives/"+drive.GetDriveId(), firecrackerDrive{
+			DriveID:      drive.GetDriveId(),
+			PathOnHost:   drive.GetPath(),
+			IsRootDevice: false,
+			IsReadOnly:   drive.GetReadonly(),
+		}); err != nil {
+			return fmt.Errorf("configure firecracker drive %q: %w", drive.GetDriveId(), err)
+		}
+	}
 
 	if spec.GetNetwork() != nil && spec.GetNetwork().GetTapName() != "" {
 		if err := d.client.put(ctx, "/network-interfaces/eth0", firecrackerNetworkInterface{
