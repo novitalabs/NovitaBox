@@ -7,10 +7,6 @@ import (
 )
 
 type ErrorResponse struct {
-	Error ErrorBody `json:"error"`
-}
-
-type ErrorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
@@ -31,10 +27,8 @@ func JSON(c *gin.Context, status int, data any) {
 
 func Error(c *gin.Context, err APIError) {
 	c.JSON(err.Status, ErrorResponse{
-		Error: ErrorBody{
-			Code:    err.Code,
-			Message: err.Message,
-		},
+		Code:    err.Code,
+		Message: err.Message,
 	})
 }
 

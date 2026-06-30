@@ -474,6 +474,36 @@ func TestExecTemplateCommand(t *testing.T) {
 	}
 }
 
+func TestRunTemplateBuildCommandsAcceptsRunStep(t *testing.T) {
+	for _, stepType := range []string{"exec", "EXEC", "run", "RUN"} {
+		if !isExecutableTemplateBuildStepType(stepType) {
+			t.Fatalf("isExecutableTemplateBuildStepType(%q) = false, want true", stepType)
+		}
+	}
+	if isExecutableTemplateBuildStepType("COPY") {
+		t.Fatalf("isExecutableTemplateBuildStepType(COPY) = true, want false")
+	}
+}
+
+func TestTemplateBuildStepCommandWrapsRunString(t *testing.T) {
+	got := templateBuildStepCommand(&novitaboxv1.TemplateBuildStep{
+		Type: "RUN",
+		Args: []string{"echo Hello World Novita AI sandbox!"},
+	})
+	want := []string{"/bin/sh", "-c", "echo Hello World Novita AI sandbox!"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("command = %#v, want %#v", got, want)
+	}
+
+	execCmd := templateBuildStepCommand(&novitaboxv1.TemplateBuildStep{
+		Type: "exec",
+		Args: []string{"/bin/echo", "ok"},
+	})
+	if strings.Join(execCmd, "\x00") != "/bin/echo\x00ok" {
+		t.Fatalf("exec command = %#v, want unchanged", execCmd)
+	}
+}
+
 func TestResolveShimBinaryAbsolute(t *testing.T) {
 	path, err := resolveShimBinary("/opt/novitabox/bin/boxshim")
 	if err != nil {

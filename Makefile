@@ -2,15 +2,21 @@ NOVITABOX_GOCACHE := $(CURDIR)/.gocache
 NOVITABOX_GOMODCACHE := $(CURDIR)/.gomodcache
 NOVITABOX_BUF_CACHE_DIR := $(CURDIR)/.bufcache
 
-.PHONY: build test fmt proto tools
+.PHONY: build build-linux-amd64 test fmt proto tools
+
+COMMANDS := boxapi boxctl boxd boxlet boxproxy boxshim
 
 build:
 	mkdir -p bin
-	GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o bin/boxapi ./cmd/boxapi
-	GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o bin/boxlet ./cmd/boxlet
-	GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o bin/boxproxy ./cmd/boxproxy
-	GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o bin/boxshim ./cmd/boxshim
-	GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o bin/boxd ./cmd/boxd
+	for cmd in $(COMMANDS); do \
+		GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o "bin/$$cmd" "./cmd/$$cmd"; \
+	done
+
+build-linux-amd64:
+	mkdir -p bin/linux-amd64
+	for cmd in $(COMMANDS); do \
+		GOOS=linux GOARCH=amd64 CGO_ENABLED=0 GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o "bin/linux-amd64/$$cmd" "./cmd/$$cmd"; \
+	done
 
 test:
 	GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go test ./...

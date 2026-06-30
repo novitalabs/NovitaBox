@@ -18,8 +18,6 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-const boxdUpdateMarker = "boxd-agent-update-test-20260629-1"
-
 type Server struct {
 	cfg        config.Config
 	logger     *log.Logger
@@ -101,7 +99,6 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":            "ok",
 		"service":           "boxd",
-		"updateMarker":      boxdUpdateMarker,
 		"startedAtUnixNano": s.startedAt.UnixNano(),
 	})
 }
