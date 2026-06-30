@@ -33,9 +33,15 @@ func (m sandboxNetworkManager) Spec(sandboxID string) (*novitaboxv1.NetworkSpec,
 	if !m.cfg.Network.Enabled {
 		return nil, nil
 	}
-	slot, err := networkSlotForSandbox(m.cfg.Network.VethCIDR, sandboxID)
-	if err != nil {
-		return nil, err
+	return m.SpecForSlot(sandboxID, 1)
+}
+
+func (m sandboxNetworkManager) SpecForSlot(sandboxID string, slot uint32) (*novitaboxv1.NetworkSpec, error) {
+	if !m.cfg.Network.Enabled {
+		return nil, nil
+	}
+	if slot == 0 {
+		return nil, fmt.Errorf("network slot is required")
 	}
 	hostAccessIP, err := indexedIP(m.cfg.Network.HostAccessCIDR, slot)
 	if err != nil {
@@ -48,11 +54,12 @@ func (m sandboxNetworkManager) Spec(sandboxID string) (*novitaboxv1.NetworkSpec,
 		GatewayIp:     m.cfg.Network.GatewayIP,
 		HostAccessIp:  hostAccessIP,
 		Mac:           m.cfg.Network.GuestMAC,
+		Slot:          slot,
 	}, nil
 }
 
-func (m sandboxNetworkManager) Complete(sandboxID string, spec *novitaboxv1.NetworkSpec) (*novitaboxv1.NetworkSpec, error) {
-	defaults, err := m.Spec(sandboxID)
+func (m sandboxNetworkManager) Complete(sandboxID string, slot uint32, spec *novitaboxv1.NetworkSpec) (*novitaboxv1.NetworkSpec, error) {
+	defaults, err := m.SpecForSlot(sandboxID, slot)
 	if err != nil || defaults == nil {
 		return defaults, err
 	}
@@ -77,7 +84,25 @@ func (m sandboxNetworkManager) Complete(sandboxID string, spec *novitaboxv1.Netw
 	if spec.Mac == "" {
 		spec.Mac = defaults.GetMac()
 	}
+	if spec.Slot == 0 {
+		spec.Slot = defaults.GetSlot()
+	}
 	return spec, nil
+}
+
+func (m sandboxNetworkManager) MaxSlots() (uint32, error) {
+	hostAccessSlots, err := networkSlotsForCIDR(m.cfg.Network.HostAccessCIDR, 1)
+	if err != nil {
+		return 0, err
+	}
+	vethSlots, err := networkSlotsForCIDR(m.cfg.Network.VethCIDR, vethAddressesPerSlot)
+	if err != nil {
+		return 0, err
+	}
+	if hostAccessSlots < vethSlots {
+		return hostAccessSlots, nil
+	}
+	return vethSlots, nil
 }
 
 func (m sandboxNetworkManager) Ensure(ctx context.Context, spec *novitaboxv1.NetworkSpec) error {
@@ -150,8 +175,8 @@ func (m sandboxNetworkManager) Ensure(ctx context.Context, spec *novitaboxv1.Net
 	return nil
 }
 
-func (m sandboxNetworkManager) Cleanup(ctx context.Context, sandboxID string) error {
-	spec, err := m.Spec(sandboxID)
+func (m sandboxNetworkManager) Cleanup(ctx context.Context, sandboxID string, slot uint32) error {
+	spec, err := m.SpecForSlot(sandboxID, slot)
 	if err != nil || spec == nil {
 		return err
 	}
@@ -228,7 +253,7 @@ func vethAddrsForSlot(cidr string, slot uint32) (sandboxVethAddrs, error) {
 	return sandboxVethAddrs{hostIP: hostIP, peerIP: peerIP}, nil
 }
 
-func networkSlotForSandbox(cidr string, sandboxID string) (uint32, error) {
+func networkSlotsForCIDR(cidr string, addressesPerSlot uint32) (uint32, error) {
 	_, network, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return 0, fmt.Errorf("parse network cidr %q: %w", cidr, err)
@@ -238,13 +263,11 @@ func networkSlotForSandbox(cidr string, sandboxID string) (uint32, error) {
 		return 0, fmt.Errorf("network cidr %q must be IPv4", cidr)
 	}
 	totalIPs := uint32(1) << uint(32-ones)
-	totalSlots := totalIPs / vethAddressesPerSlot
-	if totalSlots <= vethAddressesPerSlot {
+	totalSlots := totalIPs / addressesPerSlot
+	if totalSlots <= 1 {
 		return 0, fmt.Errorf("network cidr %q is too small for sandbox slots", cidr)
 	}
-	hash := sha1.Sum([]byte(sandboxID))
-	slot := (binary.BigEndian.Uint32(hash[:4]) % (totalSlots - vethAddressesPerSlot)) + 1
-	return slot, nil
+	return totalSlots - 1, nil
 }
 
 func networkSlotFromHostAccessIP(cidr string, hostAccessIP string) (uint32, error) {

@@ -117,6 +117,7 @@ message NetworkSpec {
   string gateway_ip = 4;
   string host_access_ip = 5;
   string mac = 6;
+  uint32 slot = 7;
 }
 
 message AgentSpec {

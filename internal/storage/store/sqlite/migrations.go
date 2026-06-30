@@ -108,6 +108,13 @@ ALTER TABLE templates ADD COLUMN cpu_count INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE templates ADD COLUMN memory_mb INTEGER NOT NULL DEFAULT 512;
 `,
 	},
+	{
+		version: 3,
+		sql: `
+ALTER TABLE sandboxes ADD COLUMN network_slot INTEGER NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX idx_sandboxes_network_slot ON sandboxes(network_slot) WHERE network_slot > 0;
+`,
+	},
 }
 
 func (s *Store) migrate(ctx context.Context) error {

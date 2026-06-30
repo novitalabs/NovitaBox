@@ -20,15 +20,16 @@ func (s *Store) CreateSandbox(ctx context.Context, record store.SandboxRecord) e
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO sandboxes (
-  sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	INSERT INTO sandboxes (
+	  sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		record.ID,
 		string(record.State),
 		record.RuntimeType,
 		record.TemplateID,
 		record.ImageID,
 		record.SnapshotID,
+		record.NetworkSlot,
 		record.CreatedAt.Unix(),
 		record.UpdatedAt.Unix(),
 	)
@@ -41,9 +42,9 @@ INSERT INTO sandboxes (
 
 func (s *Store) GetSandbox(ctx context.Context, sandboxID string) (*store.SandboxRecord, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, created_at, updated_at
-FROM sandboxes
-WHERE sandbox_id = ?`, sandboxID)
+	SELECT sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot, created_at, updated_at
+	FROM sandboxes
+	WHERE sandbox_id = ?`, sandboxID)
 
 	record, err := scanSandbox(row)
 	if err != nil {
@@ -55,9 +56,9 @@ WHERE sandbox_id = ?`, sandboxID)
 
 func (s *Store) ListSandboxes(ctx context.Context) ([]store.SandboxRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, created_at, updated_at
-FROM sandboxes
-ORDER BY created_at DESC, sandbox_id DESC`)
+	SELECT sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot, created_at, updated_at
+	FROM sandboxes
+	ORDER BY created_at DESC, sandbox_id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list sandboxes: %w", err)
 	}
@@ -116,6 +117,102 @@ INSERT INTO state_transitions (
 	return nil
 }
 
+func (s *Store) AssignSandboxNetworkSlot(ctx context.Context, sandboxID string, maxSlot uint32) (uint32, error) {
+	if maxSlot == 0 {
+		return 0, fmt.Errorf("max network slot must be greater than 0")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin sandbox network slot assignment: %w", err)
+	}
+	defer tx.Rollback()
+
+	var existing uint32
+	err = tx.QueryRowContext(ctx, "SELECT network_slot FROM sandboxes WHERE sandbox_id = ?", sandboxID).Scan(&existing)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, store.ErrNotFound
+		}
+		return 0, fmt.Errorf("query sandbox %q network slot: %w", sandboxID, err)
+	}
+	if existing > 0 {
+		if err := tx.Commit(); err != nil {
+			return 0, fmt.Errorf("commit sandbox %q existing network slot: %w", sandboxID, err)
+		}
+		return existing, nil
+	}
+
+	rows, err := tx.QueryContext(ctx, "SELECT network_slot FROM sandboxes WHERE network_slot > 0 ORDER BY network_slot")
+	if err != nil {
+		return 0, fmt.Errorf("list assigned network slots: %w", err)
+	}
+	used := make(map[uint32]struct{})
+	for rows.Next() {
+		var slot uint32
+		if err := rows.Scan(&slot); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan assigned network slot: %w", err)
+		}
+		used[slot] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, fmt.Errorf("iterate assigned network slots: %w", err)
+	}
+	rows.Close()
+
+	var slot uint32
+	for candidate := uint32(1); candidate <= maxSlot; candidate++ {
+		if _, ok := used[candidate]; !ok {
+			slot = candidate
+			break
+		}
+	}
+	if slot == 0 {
+		return 0, fmt.Errorf("no sandbox network slots available")
+	}
+
+	now := unixNow()
+	result, err := tx.ExecContext(ctx, `
+	UPDATE sandboxes
+	SET network_slot = ?, updated_at = ?
+	WHERE sandbox_id = ? AND network_slot = 0`, slot, now, sandboxID)
+	if err != nil {
+		return 0, fmt.Errorf("assign sandbox %q network slot: %w", sandboxID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("read sandbox %q network slot assignment result: %w", sandboxID, err)
+	}
+	if affected == 0 {
+		return 0, store.ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit sandbox %q network slot assignment: %w", sandboxID, err)
+	}
+
+	return slot, nil
+}
+
+func (s *Store) ReleaseSandboxNetworkSlot(ctx context.Context, sandboxID string) error {
+	result, err := s.db.ExecContext(ctx, `
+	UPDATE sandboxes
+	SET network_slot = 0, updated_at = ?
+	WHERE sandbox_id = ?`, unixNow(), sandboxID)
+	if err != nil {
+		return fmt.Errorf("release sandbox %q network slot: %w", sandboxID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read sandbox %q network slot release result: %w", sandboxID, err)
+	}
+	if affected == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) DeleteSandbox(ctx context.Context, sandboxID string) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM sandboxes WHERE sandbox_id = ?", sandboxID)
 	if err != nil {
@@ -150,6 +247,7 @@ func scanSandbox(row scanner) (store.SandboxRecord, error) {
 		&record.TemplateID,
 		&record.ImageID,
 		&record.SnapshotID,
+		&record.NetworkSlot,
 		&createdAt,
 		&updatedAt,
 	); err != nil {

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha1"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/novitalabs/NovitaBox/internal/config"
 	"github.com/novitalabs/NovitaBox/internal/log"
+	"github.com/novitalabs/NovitaBox/internal/storage/store"
 	"github.com/novitalabs/NovitaBox/internal/wsutil"
 	"golang.org/x/net/websocket"
 )
@@ -24,11 +24,12 @@ const sandboxIDHeader = "Novita-Sandbox-Id"
 type Server struct {
 	cfg        config.Config
 	logger     *log.Logger
+	store      store.Store
 	httpServer *http.Server
 }
 
-func New(cfg config.Config, logger *log.Logger) *Server {
-	s := &Server{cfg: cfg, logger: logger}
+func New(cfg config.Config, logger *log.Logger, st store.Store) *Server {
+	s := &Server{cfg: cfg, logger: logger, store: st}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/", s.handleSandbox)
@@ -245,7 +246,7 @@ func (s *Server) boxdHTTPURL(sandboxID string, rest string, rawQuery string) (st
 }
 
 func (s *Server) boxdHost(sandboxID string) (string, error) {
-	hostIP, err := hostAccessIP(s.cfg.Network.HostAccessCIDR, s.cfg.Network.VethCIDR, sandboxID)
+	hostIP, err := s.hostAccessIP(sandboxID)
 	if err != nil {
 		return "", err
 	}
@@ -254,6 +255,23 @@ func (s *Server) boxdHost(sandboxID string) (string, error) {
 		return "", fmt.Errorf("parse boxd address %q: %w", s.cfg.Boxd.Addr, err)
 	}
 	return net.JoinHostPort(hostIP, port), nil
+}
+
+func (s *Server) hostAccessIP(sandboxID string) (string, error) {
+	if s.store == nil {
+		return "", errors.New("sandbox store is not configured")
+	}
+	record, err := s.store.GetSandbox(context.Background(), sandboxID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return "", fmt.Errorf("sandbox %q not found", sandboxID)
+		}
+		return "", err
+	}
+	if record.NetworkSlot == 0 {
+		return "", fmt.Errorf("sandbox %q has no active network slot", sandboxID)
+	}
+	return indexedIP(s.cfg.Network.HostAccessCIDR, record.NetworkSlot)
 }
 
 func sandboxIDFromRequest(r *http.Request) string {
@@ -298,32 +316,6 @@ func isProcessConnectPath(rest string) bool {
 	}
 	parts := strings.Split(strings.Trim(rest, "/"), "/")
 	return len(parts) == 3 && parts[0] == "processes" && parts[1] != "" && parts[2] == "connect"
-}
-
-func hostAccessIP(hostAccessCIDR string, vethCIDR string, sandboxID string) (string, error) {
-	slot, err := networkSlotForSandbox(vethCIDR, sandboxID)
-	if err != nil {
-		return "", err
-	}
-	return indexedIP(hostAccessCIDR, slot)
-}
-
-func networkSlotForSandbox(cidr string, sandboxID string) (uint32, error) {
-	_, network, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return 0, fmt.Errorf("parse network cidr %q: %w", cidr, err)
-	}
-	ones, bits := network.Mask.Size()
-	if bits != 32 {
-		return 0, fmt.Errorf("network cidr %q must be IPv4", cidr)
-	}
-	totalIPs := uint32(1) << uint(32-ones)
-	totalSlots := totalIPs / 2
-	if totalSlots <= 2 {
-		return 0, fmt.Errorf("network cidr %q is too small for sandbox slots", cidr)
-	}
-	hash := sha1.Sum([]byte(sandboxID))
-	return (binary.BigEndian.Uint32(hash[:4]) % (totalSlots - 2)) + 1, nil
 }
 
 func indexedIP(cidr string, index uint32) (string, error) {
