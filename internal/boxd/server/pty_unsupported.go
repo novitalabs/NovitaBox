@@ -5,7 +5,6 @@ package server
 import (
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 )
 
@@ -14,20 +13,17 @@ type processPipe struct {
 	stdout io.ReadCloser
 }
 
-func startShellProcess(shellPath string, cols uint16, rows uint16) (*exec.Cmd, *processPipe, error) {
-	if shellPath == "" {
-		shellPath = "/bin/sh"
-	}
-	return startPTYProcess(shellPath, nil, "", nil, cols, rows)
-}
-
 func startPTYProcess(cmdPath string, args []string, cwd string, env []string, cols uint16, rows uint16) (*exec.Cmd, *processPipe, error) {
 	if cmdPath == "" {
 		cmdPath = "/bin/sh"
 	}
-	cmd := exec.Command(cmdPath, args...)
-	cmd.Env = append(os.Environ(), env...)
-	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	cmdEnv := processEnv(append(env, "TERM=xterm-256color"))
+	resolvedPath, err := resolveProcessPath(cmdPath, cmdEnv)
+	if err != nil {
+		return nil, nil, err
+	}
+	cmd := exec.Command(resolvedPath, args...)
+	cmd.Env = cmdEnv
 	if cwd != "" {
 		cmd.Dir = cwd
 	}

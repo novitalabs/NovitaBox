@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -104,6 +106,11 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 	if err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
 		return nil, fmt.Errorf("create runtime: %w", err)
+	}
+	if err := s.ensureSandboxAgentCurrent(ctx, record.ID, spec.GetNetwork()); err != nil {
+		_, _ = shim.KillRuntime(context.Background(), &novitaboxv1.KillRuntimeRequest{SandboxId: record.ID})
+		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		return nil, fmt.Errorf("refresh sandbox agent: %w", err)
 	}
 
 	if err := s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateRunning, "create"); err != nil {
@@ -208,6 +215,10 @@ func (s *sandboxService) ResumeSandbox(ctx context.Context, req *novitaboxv1.Res
 	defer closeShim()
 
 	spec := s.runtimeSpecForSandbox(*record)
+	if err := s.attachAgentDrive(ctx, spec); err != nil {
+		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		return nil, err
+	}
 	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
 		return nil, err
@@ -215,6 +226,10 @@ func (s *sandboxService) ResumeSandbox(ctx context.Context, req *novitaboxv1.Res
 	if _, err := shim.ResumeRuntime(ctx, &novitaboxv1.ResumeRuntimeRequest{RuntimeSpec: spec}); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
 		return nil, fmt.Errorf("resume runtime: %w", err)
+	}
+	if err := s.ensureSandboxAgentCurrent(ctx, record.ID, spec.GetNetwork()); err != nil {
+		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		return nil, fmt.Errorf("refresh sandbox agent: %w", err)
 	}
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateRunning, "resume"); err != nil {
 		return nil, err
@@ -308,6 +323,10 @@ func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.Star
 	defer closeShim()
 
 	spec := s.runtimeSpecForSandbox(*record)
+	if err := s.attachAgentDrive(ctx, spec); err != nil {
+		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		return nil, err
+	}
 	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
 		return nil, err
@@ -315,6 +334,10 @@ func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.Star
 	if _, err := shim.StartRuntime(ctx, &novitaboxv1.StartRuntimeRequest{RuntimeSpec: spec}); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
 		return nil, fmt.Errorf("start runtime: %w", err)
+	}
+	if err := s.ensureSandboxAgentCurrent(ctx, record.ID, spec.GetNetwork()); err != nil {
+		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		return nil, fmt.Errorf("refresh sandbox agent: %w", err)
 	}
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateRunning, "start"); err != nil {
 		return nil, err
@@ -393,6 +416,114 @@ func (s *sandboxService) setSandboxState(ctx context.Context, sandboxID string, 
 		return err
 	}
 	return nil
+}
+
+func (s *sandboxService) ensureSandboxAgentCurrent(ctx context.Context, sandboxID string, networkSpec *novitaboxv1.NetworkSpec) error {
+	if strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "stub") || !s.cfg.Network.Enabled {
+		return nil
+	}
+	if networkSpec == nil || networkSpec.GetHostAccessIp() == "" {
+		return errors.New("sandbox network host_access_ip is required to refresh agent")
+	}
+	_, port, err := net.SplitHostPort(s.cfg.Boxd.Addr)
+	if err != nil {
+		return fmt.Errorf("parse boxd address %q: %w", s.cfg.Boxd.Addr, err)
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	baseURL := "http://" + net.JoinHostPort(networkSpec.GetHostAccessIp(), port)
+	healthURL := baseURL + "/healthz"
+	if err := waitHTTPHealthWithClient(ctx, healthURL, time.Duration(s.cfg.Template.AgentWaitSecs)*time.Second, client); err != nil {
+		return err
+	}
+	beforeStartedAt, err := readAgentStartedAt(ctx, healthURL, client)
+	if err != nil {
+		return err
+	}
+
+	body := map[string]any{
+		"path":        s.cfg.Template.BoxdGuestPath,
+		"mountDevice": "/dev/vdb",
+		"mountPath":   "/novitabox/agent",
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal agent reexec request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/admin/reexec", bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create agent reexec request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("call agent reexec: %w", err)
+	}
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("agent reexec returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	if err := waitAgentReexecComplete(ctx, healthURL, beforeStartedAt, time.Duration(s.cfg.Template.AgentWaitSecs)*time.Second, client); err != nil {
+		return fmt.Errorf("wait for refreshed agent health: %w", err)
+	}
+
+	s.logger.Info("refreshed sandbox agent", "sandbox_id", sandboxID, "agent_path", s.cfg.Template.BoxdGuestPath)
+	return nil
+}
+
+func readAgentStartedAt(ctx context.Context, healthURL string, client *http.Client) (int64, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create health request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		io.Copy(io.Discard, resp.Body)
+		return 0, fmt.Errorf("health endpoint returned status %d", resp.StatusCode)
+	}
+
+	var body struct {
+		StartedAtUnixNano int64 `json:"startedAtUnixNano"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&body); err != nil {
+		return 0, fmt.Errorf("decode health response: %w", err)
+	}
+	if body.StartedAtUnixNano == 0 {
+		return 0, errors.New("health response missing startedAtUnixNano")
+	}
+	return body.StartedAtUnixNano, nil
+}
+
+func waitAgentReexecComplete(ctx context.Context, healthURL string, previousStartedAt int64, timeout time.Duration, client *http.Client) error {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		startedAt, err := readAgentStartedAt(ctx, healthURL, client)
+		if err == nil && startedAt != previousStartedAt {
+			return nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = errors.New("agent has not reexeced yet")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	return lastErr
 }
 
 func isAlreadyExistsError(err error) bool {
@@ -484,6 +615,9 @@ func (s *sandboxService) completeRuntimeSpec(record store.SandboxRecord, spec *n
 }
 
 func (s *sandboxService) prepareSandboxRuntimeFiles(ctx context.Context, record store.SandboxRecord, spec *novitaboxv1.RuntimeSpec) error {
+	if err := s.attachAgentDrive(ctx, spec); err != nil {
+		return err
+	}
 	if spec.GetKernel().GetKernelPath() != "" {
 		if s.cfg.Template.KernelPath == "" {
 			return errors.New("sandbox runtime requires --template-kernel")
@@ -823,9 +957,9 @@ func (s *artifactService) CreateTemplate(ctx context.Context, req *novitaboxv1.C
 		return nil, err
 	}
 
-	s.logger.Info("injecting boxd into template rootfs", "template_id", templateID, "boxd_bin", s.cfg.Template.BoxdBinaryPath)
-	if err := s.injectTemplateBoxd(ctx, paths.RootfsPath); err != nil {
-		s.logger.Error("inject boxd into template rootfs failed", "template_id", templateID, "error", err)
+	s.logger.Info("injecting template init into rootfs", "template_id", templateID)
+	if err := s.injectTemplateInit(ctx, paths.RootfsPath); err != nil {
+		s.logger.Error("inject template init into rootfs failed", "template_id", templateID, "error", err)
 		return nil, err
 	}
 	s.logger.Info("creating template snapshot", "template_id", templateID, "memfile_path", paths.MemfilePath, "snapfile_path", paths.SnapfilePath)
@@ -857,33 +991,25 @@ func (s *artifactService) CreateTemplate(ctx context.Context, req *novitaboxv1.C
 	return templateRecordToProto(record), nil
 }
 
-func (s *artifactService) injectTemplateBoxd(ctx context.Context, rootfsPath string) error {
+func (s *artifactService) injectTemplateInit(ctx context.Context, rootfsPath string) error {
 	if strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "stub") {
 		return nil
 	}
-	if s.cfg.Template.BoxdBinaryPath == "" {
-		return nil
-	}
-	if _, err := os.Stat(s.cfg.Template.BoxdBinaryPath); err != nil {
-		return fmt.Errorf("stat template boxd binary: %w", err)
-	}
 
-	workDir, err := os.MkdirTemp(filepath.Dir(rootfsPath), ".boxd-inject-*")
+	workDir, err := os.MkdirTemp(filepath.Dir(rootfsPath), ".init-inject-*")
 	if err != nil {
-		return fmt.Errorf("create boxd inject workdir: %w", err)
+		return fmt.Errorf("create init inject workdir: %w", err)
 	}
 	defer os.RemoveAll(workDir)
 
 	initPath := filepath.Join(workDir, "novitabox-init")
 	if err := os.WriteFile(initPath, []byte(templateBoxdInitScript(s.cfg.Template.BoxdGuestPath, s.cfg.Template.BoxdGuestAddr)), 0o755); err != nil {
-		return fmt.Errorf("write template boxd init script: %w", err)
+		return fmt.Errorf("write template init script: %w", err)
 	}
 
 	commands := []string{
 		"mkdir /novitabox",
-		"write " + debugfsQuote(s.cfg.Template.BoxdBinaryPath) + " " + debugfsQuote(s.cfg.Template.BoxdGuestPath),
 		"write " + debugfsQuote(initPath) + " /novitabox/init",
-		"sif " + debugfsQuote(s.cfg.Template.BoxdGuestPath) + " mode 0100755",
 		"sif /novitabox/init mode 0100755",
 	}
 	for _, command := range commands {
@@ -905,6 +1031,8 @@ mount -t sysfs sysfs /sys 2>/dev/null || true
 mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
 mkdir -p /dev/pts 2>/dev/null || true
 mount -t devpts devpts /dev/pts 2>/dev/null || true
+mkdir -p /novitabox/agent 2>/dev/null || true
+mount -o ro /dev/vdb /novitabox/agent 2>/dev/null || true
 exec ` + boxdPath + ` --addr ` + listenAddr + `
 `
 }
@@ -940,9 +1068,17 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 
 	buildID := "template-build-" + templateID
 	buildDir := filepath.Join(layout.New(s.cfg.RootDir).SandboxDir(buildID))
+	if err := os.RemoveAll(buildDir); err != nil {
+		return fmt.Errorf("remove stale template build sandbox: %w", err)
+	}
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return fmt.Errorf("create template snapshot build dir: %w", err)
 	}
+	defer func() {
+		if err := cleanupInternalSandbox(context.Background(), s.cfg, buildID); err != nil {
+			s.logger.Warn("cleanup template build sandbox failed", "sandbox_id", buildID, "error", err)
+		}
+	}()
 
 	shimSocket := filepath.Join(buildDir, "shim.sock")
 	if err := ensureShim(ctx, s.cfg, shimSocket); err != nil {
@@ -975,6 +1111,9 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 			SnapfilePath: paths.SnapfilePath,
 			SnapshotType: "full",
 		},
+	}
+	if err := s.attachAgentDrive(ctx, spec); err != nil {
+		return err
 	}
 
 	if _, err := shim.CreateRuntime(ctx, &novitaboxv1.CreateRuntimeRequest{RuntimeSpec: spec}); err != nil {
@@ -1339,29 +1478,283 @@ func newImageID() (string, error) {
 }
 
 func (s *artifactService) materializeImageRootfs(ctx context.Context, req *novitaboxv1.CreateImageRequest, dest string) error {
-	switch {
-	case req.GetDockerImage() != "":
-		return s.materializeDockerImage(ctx, req.GetDockerImage(), dest)
-	case req.GetTemplateId() != "":
-		record, err := s.store.GetTemplate(ctx, req.GetTemplateId())
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return status.Error(codes.NotFound, "template not found")
-			}
-			return err
-		}
-		return cloneOrCopyFile(record.RootfsPath, dest)
-	case req.GetSandboxId() != "":
-		if _, err := s.store.GetSandbox(ctx, req.GetSandboxId()); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return status.Error(codes.NotFound, "sandbox not found")
-			}
-			return err
-		}
-		return cloneOrCopyFile(sandboxRuntimePaths(s.cfg.RootDir, req.GetSandboxId()).RootfsPath, dest)
-	default:
-		return status.Error(codes.InvalidArgument, "one of template_id, sandbox_id, or docker_image is required")
+	if req.GetTemplateId() == "" {
+		return status.Error(codes.InvalidArgument, "template_id is required")
 	}
+	record, err := s.store.GetTemplate(ctx, req.GetTemplateId())
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return status.Error(codes.NotFound, "template not found")
+		}
+		return err
+	}
+	return s.exportTemplateImageRootfs(ctx, *record, dest)
+}
+
+func (s *artifactService) exportTemplateImageRootfs(ctx context.Context, template store.TemplateRecord, dest string) error {
+	if template.RootfsPath == "" {
+		return status.Error(codes.InvalidArgument, "template rootfs is required")
+	}
+	if template.MemfilePath == "" || template.SnapfilePath == "" {
+		return status.Error(codes.InvalidArgument, "template snapshot is required")
+	}
+	if strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "stub") {
+		return cloneOrCopyFile(template.RootfsPath, dest)
+	}
+
+	buildID := "image-build-" + filepath.Base(filepath.Dir(dest))
+	l := layout.New(s.cfg.RootDir)
+	buildDir := l.SandboxDir(buildID)
+	paths := sandboxRuntimePaths(s.cfg.RootDir, buildID)
+
+	if err := os.RemoveAll(buildDir); err != nil {
+		return fmt.Errorf("remove stale image build sandbox: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(paths.RootfsPath), 0o755); err != nil {
+		return fmt.Errorf("create image build snapshot directory: %w", err)
+	}
+	defer func() {
+		if err := cleanupInternalSandbox(context.Background(), s.cfg, buildID); err != nil {
+			s.logger.Warn("cleanup image build sandbox failed", "sandbox_id", buildID, "error", err)
+		}
+	}()
+
+	if err := cloneOrCopyFile(template.MemfilePath, paths.MemfilePath); err != nil {
+		return fmt.Errorf("prepare image build memfile from template %q: %w", template.ID, err)
+	}
+	if err := cloneOrCopyFile(template.SnapfilePath, paths.SnapfilePath); err != nil {
+		return fmt.Errorf("prepare image build snapfile from template %q: %w", template.ID, err)
+	}
+	if s.cfg.Template.KernelPath != "" {
+		if err := linkOrCopyFile(s.cfg.Template.KernelPath, paths.KernelPath); err != nil {
+			return fmt.Errorf("prepare image build kernel: %w", err)
+		}
+	}
+
+	shimSocket := filepath.Join(buildDir, "shim.sock")
+	if err := ensureShim(ctx, s.cfg, shimSocket); err != nil {
+		return fmt.Errorf("start image build shim: %w", err)
+	}
+
+	shim, closeShim, err := dialShim(ctx, shimSocket)
+	if err != nil {
+		return fmt.Errorf("dial image build shim: %w", err)
+	}
+	defer closeShim()
+
+	spec := s.imageBuildRuntimeSpec(buildID, template.RootfsPath, paths)
+	if err := s.attachAgentDrive(ctx, spec); err != nil {
+		return err
+	}
+	if strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "firecracker") && spec.GetKernel().GetKernelPath() == "" {
+		return errors.New("image export from template requires --template-kernel")
+	}
+	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
+		return fmt.Errorf("prepare image build network: %w", err)
+	}
+
+	return withWritableTemplateRootfs(template.RootfsPath, func(workRootfsPath string) error {
+		if _, err := shim.ResumeRuntime(ctx, &novitaboxv1.ResumeRuntimeRequest{RuntimeSpec: spec}); err != nil {
+			return fmt.Errorf("resume template runtime for image export: %w", err)
+		}
+		if _, err := shim.StopRuntime(ctx, &novitaboxv1.StopRuntimeRequest{
+			SandboxId:      buildID,
+			TimeoutSeconds: 30,
+		}); err != nil {
+			return fmt.Errorf("stop image build runtime: %w", err)
+		}
+		if err := cloneOrCopyFile(workRootfsPath, dest); err != nil {
+			return fmt.Errorf("export image rootfs from template %q: %w", template.ID, err)
+		}
+		return nil
+	})
+}
+
+func (s *artifactService) imageBuildRuntimeSpec(sandboxID string, rootfsPath string, paths sandboxRuntimeArtifactPaths) *novitaboxv1.RuntimeSpec {
+	runtimeType := runtimeTypeFromRecord(s.cfg.Boxshim.RuntimeDriver)
+	networkSpec, _ := newSandboxNetworkManager(s.cfg).Spec(sandboxID)
+	spec := &novitaboxv1.RuntimeSpec{
+		SandboxId:   sandboxID,
+		RuntimeType: runtimeType,
+		Machine: &novitaboxv1.MachineSpec{
+			Vcpu:     s.cfg.Template.VCPU,
+			MemoryMb: s.cfg.Template.MemoryMB,
+		},
+		Kernel: &novitaboxv1.KernelSpec{
+			KernelPath: paths.KernelPath,
+			KernelArgs: templateKernelArgs(s.cfg.Template.KernelArgs),
+		},
+		Rootfs: &novitaboxv1.RootfsSpec{
+			Path:   rootfsPath,
+			Format: "ext4",
+		},
+		Snapshot: &novitaboxv1.SnapshotSpec{
+			MemfilePath:  paths.MemfilePath,
+			SnapfilePath: paths.SnapfilePath,
+			SnapshotType: "full",
+		},
+		Network: networkSpec,
+		Agent: &novitaboxv1.AgentSpec{
+			Type:     "boxd",
+			Protocol: "grpc",
+			Port:     49983,
+		},
+	}
+	if s.cfg.Template.KernelPath == "" && !strings.EqualFold(s.cfg.Boxshim.RuntimeDriver, "firecracker") {
+		spec.Kernel.KernelPath = ""
+	}
+	return spec
+}
+
+func (s *sandboxService) attachAgentDrive(ctx context.Context, spec *novitaboxv1.RuntimeSpec) error {
+	return attachAgentDrive(ctx, s.cfg, spec)
+}
+
+func (s *artifactService) attachAgentDrive(ctx context.Context, spec *novitaboxv1.RuntimeSpec) error {
+	return attachAgentDrive(ctx, s.cfg, spec)
+}
+
+func attachAgentDrive(ctx context.Context, cfg config.Config, spec *novitaboxv1.RuntimeSpec) error {
+	if spec == nil || strings.EqualFold(cfg.Boxshim.RuntimeDriver, "stub") {
+		return nil
+	}
+	agentPath, err := ensureAgentImage(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("prepare agent image: %w", err)
+	}
+	spec.ExtraDrives = removeExtraDrive(spec.GetExtraDrives(), "agent")
+	spec.ExtraDrives = append(spec.ExtraDrives, &novitaboxv1.DriveSpec{
+		DriveId:  "agent",
+		Path:     agentPath,
+		Readonly: true,
+		Format:   "ext4",
+	})
+	return nil
+}
+
+func removeExtraDrive(drives []*novitaboxv1.DriveSpec, driveID string) []*novitaboxv1.DriveSpec {
+	out := make([]*novitaboxv1.DriveSpec, 0, len(drives))
+	for _, drive := range drives {
+		if drive == nil || drive.GetDriveId() == driveID {
+			continue
+		}
+		out = append(out, drive)
+	}
+	return out
+}
+
+func ensureAgentImage(ctx context.Context, cfg config.Config) (string, error) {
+	if cfg.Template.BoxdBinaryPath == "" {
+		return "", errors.New("template boxd binary path is required")
+	}
+	boxdData, err := os.ReadFile(cfg.Template.BoxdBinaryPath)
+	if err != nil {
+		return "", fmt.Errorf("read boxd binary: %w", err)
+	}
+	sum := sha256.Sum256(boxdData)
+	hash := hex.EncodeToString(sum[:8])
+	agentDir := filepath.Join(cfg.RootDir, "agents")
+	agentPath := filepath.Join(agentDir, "boxd-"+hash+".ext4")
+	if _, err := os.Stat(agentPath); err == nil {
+		return agentPath, nil
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("stat agent image: %w", err)
+	}
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		return "", fmt.Errorf("create agent directory: %w", err)
+	}
+
+	workDir, err := os.MkdirTemp(agentDir, ".agent-*")
+	if err != nil {
+		return "", fmt.Errorf("create agent workdir: %w", err)
+	}
+	defer os.RemoveAll(workDir)
+
+	if err := os.WriteFile(filepath.Join(workDir, "boxd"), boxdData, 0o755); err != nil {
+		return "", fmt.Errorf("write agent boxd: %w", err)
+	}
+	tmpPath := agentPath + fmt.Sprintf(".tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
+	if err := createExt4FromDirSized(ctx, workDir, tmpPath, "64M"); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("create agent image: %w", err)
+	}
+	if err := os.Rename(tmpPath, agentPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("install agent image: %w", err)
+	}
+	return agentPath, nil
+}
+
+func withWritableTemplateRootfs(rootfsPath string, fn func(string) error) error {
+	backupPath := rootfsPath + fmt.Sprintf(".image-export-backup-%d-%d", os.Getpid(), time.Now().UnixNano())
+	workPath := rootfsPath + fmt.Sprintf(".image-export-work-%d-%d", os.Getpid(), time.Now().UnixNano())
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale rootfs backup: %w", err)
+	}
+	if err := os.Remove(workPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale rootfs work copy: %w", err)
+	}
+	if err := cloneOrCopyFile(rootfsPath, workPath); err != nil {
+		return fmt.Errorf("create writable template rootfs copy: %w", err)
+	}
+
+	restored := false
+	defer func() {
+		if restored {
+			return
+		}
+		_ = os.Remove(rootfsPath)
+		_ = os.Rename(backupPath, rootfsPath)
+		_ = os.Remove(workPath)
+	}()
+
+	if err := os.Rename(rootfsPath, backupPath); err != nil {
+		_ = os.Remove(workPath)
+		return fmt.Errorf("backup template rootfs: %w", err)
+	}
+	if err := os.Rename(workPath, rootfsPath); err != nil {
+		_ = os.Rename(backupPath, rootfsPath)
+		return fmt.Errorf("activate writable template rootfs: %w", err)
+	}
+
+	runErr := fn(rootfsPath)
+	if restoreErr := restoreTemplateRootfs(rootfsPath, backupPath); restoreErr != nil {
+		if runErr != nil {
+			return fmt.Errorf("%w; additionally failed to restore template rootfs: %v", runErr, restoreErr)
+		}
+		return restoreErr
+	}
+	restored = true
+	if runErr != nil {
+		return runErr
+	}
+	return nil
+}
+
+func restoreTemplateRootfs(rootfsPath string, backupPath string) error {
+	if err := os.Remove(rootfsPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove writable template rootfs: %w", err)
+	}
+	if err := os.Rename(backupPath, rootfsPath); err != nil {
+		return fmt.Errorf("restore template rootfs: %w", err)
+	}
+	return nil
+}
+
+func cleanupInternalSandbox(ctx context.Context, cfg config.Config, sandboxID string) error {
+	sandboxDir := layout.New(cfg.RootDir).SandboxDir(sandboxID)
+	shimSocket := filepath.Join(sandboxDir, "shim.sock")
+	if shim, closeShim, err := dialShim(ctx, shimSocket); err == nil {
+		_, _ = shim.KillRuntime(ctx, &novitaboxv1.KillRuntimeRequest{SandboxId: sandboxID})
+		_ = closeShim()
+	}
+	if err := terminateShimProcess(sandboxDir, 5*time.Second); err != nil {
+		return err
+	}
+	if err := newSandboxNetworkManager(cfg).Cleanup(ctx, sandboxID); err != nil {
+		return err
+	}
+	return os.RemoveAll(sandboxDir)
 }
 
 func (s *artifactService) ListImages(ctx context.Context, _ *novitaboxv1.ListImagesRequest) (*novitaboxv1.ListImagesResponse, error) {
@@ -1515,11 +1908,15 @@ func isLocalFile(value string) bool {
 }
 
 func createExt4FromDir(ctx context.Context, sourceDir string, dest string) error {
+	return createExt4FromDirSized(ctx, sourceDir, dest, "2G")
+}
+
+func createExt4FromDirSized(ctx context.Context, sourceDir string, dest string, size string) error {
 	if err := os.RemoveAll(dest); err != nil {
 		return fmt.Errorf("remove old rootfs %q: %w", dest, err)
 	}
 
-	cmd := exec.CommandContext(ctx, "mkfs.ext4", "-O", "^64bit,^metadata_csum", "-d", sourceDir, "-F", dest, "2G")
+	cmd := exec.CommandContext(ctx, "mkfs.ext4", "-O", "^64bit,^metadata_csum", "-d", sourceDir, "-F", dest, size)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("mkfs.ext4 rootfs failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}

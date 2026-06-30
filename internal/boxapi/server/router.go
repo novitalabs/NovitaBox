@@ -18,8 +18,25 @@ func (s *Server) router() *gin.Engine {
 
 	h := handler.New(s.cfg, s.logger.Component("handler"), s.store, s.sandbox, s.artifact)
 
-	r.GET("/healthz", h.Healthz)
+	registerCommonRoutes(r, h)
+	registerCompatibleRoutes(r, h)
+	registerV1Routes(r, h)
+	registerV2Routes(r, h)
+	registerV3Routes(r, h)
 
+	r.NoRoute(func(c *gin.Context) {
+		response.Error(c, response.ErrNotFound("route not found"))
+	})
+
+	return r
+}
+
+func registerCommonRoutes(r *gin.Engine, h *handler.Handler) {
+	r.GET("/health", h.Healthz)
+	r.GET("/healthz", h.Healthz)
+}
+
+func registerCompatibleRoutes(r *gin.Engine, h *handler.Handler) {
 	templateRoutes := r.Group("/templates")
 	{
 		templateRoutes.GET("", h.ListTemplates)
@@ -27,54 +44,75 @@ func (s *Server) router() *gin.Engine {
 		templateRoutes.DELETE("/:template_id", h.DeleteTemplate)
 	}
 
+	sandboxRoutes := r.Group("/sandboxes")
+	{
+		sandboxRoutes.POST("", h.CreateSandbox)
+		sandboxRoutes.GET("", h.ListSandboxesV2)
+		sandboxRoutes.GET("/:sandbox_id", h.GetSandbox)
+		sandboxRoutes.DELETE("/:sandbox_id", h.KillSandbox)
+		sandboxRoutes.POST("/:sandbox_id/pause", h.PauseSandbox)
+		sandboxRoutes.POST("/:sandbox_id/connect", h.ConnectSandbox)
+		sandboxRoutes.POST("/:sandbox_id/timeout", h.SetSandboxTimeout)
+	}
+}
+
+func registerV1Routes(r *gin.Engine, h *handler.Handler) {
+	v1 := r.Group("/v1")
+	{
+		registerV1SandboxRoutes(v1, h)
+		registerV1ImageRoutes(v1, h)
+		registerV1RuntimeRoutes(v1, h)
+	}
+}
+
+func registerV1SandboxRoutes(v1 *gin.RouterGroup, h *handler.Handler) {
+	sandboxes := v1.Group("/sandboxes")
+	{
+		sandboxes.POST("", h.CreateSandbox)
+		sandboxes.GET("", h.ListSandboxes)
+		sandboxes.GET("/:sandbox_id", h.GetSandbox)
+		sandboxes.DELETE("/:sandbox_id", h.KillSandbox)
+		sandboxes.POST("/:sandbox_id/pause", h.PauseSandbox)
+		sandboxes.POST("/:sandbox_id/resume", h.ResumeSandbox)
+
+		sandboxes.POST("/:sandbox_id/poweroff", h.PoweroffSandbox)
+		sandboxes.POST("/:sandbox_id/poweron", h.PoweronSandbox)
+		sandboxes.POST("/:sandbox_id/reboot", h.RebootSandbox)
+	}
+}
+
+func registerV1ImageRoutes(v1 *gin.RouterGroup, h *handler.Handler) {
+	images := v1.Group("/images")
+	{
+		images.POST("", h.CreateImage)
+		images.GET("", h.ListImages)
+		images.GET("/:image_id", h.GetImage)
+		images.DELETE("/:image_id", h.DeleteImage)
+	}
+}
+
+func registerV1RuntimeRoutes(v1 *gin.RouterGroup, h *handler.Handler) {
+	runtimes := v1.Group("/runtimes")
+	{
+		runtimes.GET("", h.ListRuntimes)
+		runtimes.GET("/:runtime_type", h.GetRuntime)
+		runtimes.GET("/:runtime_type/capabilities", h.GetRuntimeCapabilities)
+	}
+}
+
+func registerV2Routes(r *gin.Engine, h *handler.Handler) {
 	v2 := r.Group("/v2")
 	{
+		v2.GET("/sandboxes", h.ListSandboxesV2)
 		v2.POST("/templates/:template_id/builds/:build_id", h.StartTemplateBuildV2)
 	}
+}
 
+func registerV3Routes(r *gin.Engine, h *handler.Handler) {
 	v3 := r.Group("/v3")
 	{
 		v3.POST("/templates", h.CreateTemplateV3)
 	}
-
-	v1 := r.Group("/v1")
-	{
-		sandboxes := v1.Group("/sandboxes")
-		{
-			sandboxes.POST("", h.CreateSandbox)
-			sandboxes.GET("", h.ListSandboxes)
-			sandboxes.GET("/:sandbox_id", h.GetSandbox)
-			sandboxes.DELETE("/:sandbox_id", h.KillSandbox)
-			sandboxes.POST("/:sandbox_id/pause", h.PauseSandbox)
-			sandboxes.POST("/:sandbox_id/resume", h.ResumeSandbox)
-
-			sandboxes.POST("/:sandbox_id/poweroff", h.PoweroffSandbox)
-			sandboxes.POST("/:sandbox_id/poweron", h.PoweronSandbox)
-			sandboxes.POST("/:sandbox_id/reboot", h.RebootSandbox)
-		}
-
-		images := v1.Group("/images")
-		{
-			images.POST("", h.CreateImage)
-			images.GET("", h.ListImages)
-			images.GET("/:image_id", h.GetImage)
-			images.DELETE("/:image_id", h.DeleteImage)
-		}
-
-		runtimes := v1.Group("/runtimes")
-		{
-			runtimes.GET("", h.ListRuntimes)
-			runtimes.GET("/:runtime_type", h.GetRuntime)
-			runtimes.GET("/:runtime_type/capabilities", h.GetRuntimeCapabilities)
-		}
-
-	}
-
-	r.NoRoute(func(c *gin.Context) {
-		response.Error(c, response.ErrNotFound("route not found"))
-	})
-
-	return r
 }
 
 func (s *Server) accessLog() gin.HandlerFunc {

@@ -20,12 +20,9 @@ import (
 )
 
 type createImageRequest struct {
-	ImageID     string            `json:"imageID"`
-	TemplateID  string            `json:"templateID,omitempty"`
-	SandboxID   string            `json:"sandboxID,omitempty"`
-	DockerImage string            `json:"dockerImage,omitempty"`
-	RootfsPath  string            `json:"rootfsPath,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
+	ImageID    string            `json:"imageID"`
+	TemplateID string            `json:"templateID"`
+	Labels     map[string]string `json:"labels,omitempty"`
 }
 
 type imageResponse struct {
@@ -58,21 +55,19 @@ func (h *Handler) CreateImage(c *gin.Context) {
 		response.Error(c, response.ErrBadRequest(err.Error()))
 		return
 	}
-	if req.TemplateID == "" && req.SandboxID == "" && req.DockerImage == "" && req.RootfsPath == "" {
-		response.Error(c, response.ErrBadRequest("one of templateID, sandboxID, dockerImage, or rootfsPath is required"))
+	if req.TemplateID == "" {
+		response.Error(c, response.ErrBadRequest("templateID is required"))
 		return
 	}
 
 	if h.artifactClient != nil {
 		info, err := h.artifactClient.CreateImage(c.Request.Context(), &novitaboxv1.CreateImageRequest{
-			ImageId:     req.ImageID,
-			TemplateId:  req.TemplateID,
-			SandboxId:   req.SandboxID,
-			DockerImage: imageDockerSource(req),
-			Labels:      req.Labels,
+			ImageId:    req.ImageID,
+			TemplateId: req.TemplateID,
+			Labels:     req.Labels,
 		})
 		if err != nil {
-			handleImageReadError(c, h, err, "create image failed")
+			handleImageCreateError(c, h, err, "create image failed")
 			return
 		}
 		response.JSON(c, http.StatusCreated, imageProtoToResponse(info))
@@ -85,7 +80,7 @@ func (h *Handler) CreateImage(c *gin.Context) {
 	}
 	record, err := h.createLocalImage(c, req)
 	if err != nil {
-		handleImageReadError(c, h, err, "create image failed")
+		handleImageCreateError(c, h, err, "create image failed")
 		return
 	}
 	response.JSON(c, http.StatusCreated, imageRecordToResponse(*record))
@@ -202,7 +197,7 @@ func (h *Handler) createLocalImage(c *gin.Context, req createImageRequest) (*sto
 		return nil, err
 	}
 	if source != "" {
-		if err := copyLocalFile(source, rootfsPath); err != nil {
+		if err := copyImageRootfs(source, rootfsPath); err != nil {
 			return nil, err
 		}
 	}
@@ -218,35 +213,14 @@ func (h *Handler) createLocalImage(c *gin.Context, req createImageRequest) (*sto
 }
 
 func (h *Handler) localImageRootfsSource(c *gin.Context, req createImageRequest) (string, error) {
-	switch {
-	case req.RootfsPath != "":
-		return req.RootfsPath, nil
-	case req.TemplateID != "":
-		record, err := h.store.GetTemplate(c.Request.Context(), req.TemplateID)
-		if err != nil {
-			return "", err
+	record, err := h.store.GetTemplate(c.Request.Context(), req.TemplateID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return "", status.Error(codes.NotFound, "template not found")
 		}
-		return record.RootfsPath, nil
-	case req.SandboxID != "":
-		if _, err := h.store.GetSandbox(c.Request.Context(), req.SandboxID); err != nil {
-			return "", err
-		}
-		return localSandboxRuntimePaths(h.cfg.RootDir, req.SandboxID).RootfsPath, nil
-	case req.DockerImage != "":
-		if isLocalRootfsFile(req.DockerImage) {
-			return req.DockerImage, nil
-		}
-		return "", errors.New("docker image materialization requires boxlet")
-	default:
-		return "", nil
+		return "", err
 	}
-}
-
-func imageDockerSource(req createImageRequest) string {
-	if req.DockerImage != "" {
-		return req.DockerImage
-	}
-	return req.RootfsPath
+	return record.RootfsPath, nil
 }
 
 func imageRecordToResponse(record store.ImageRecord) imageResponse {
@@ -295,6 +269,23 @@ func handleImageReadError(c *gin.Context, h *Handler, err error, message string)
 	response.Error(c, response.ErrInternal(message))
 }
 
+func handleImageCreateError(c *gin.Context, h *Handler, err error, message string) {
+	if status.Code(err) == codes.NotFound {
+		response.Error(c, response.ErrNotFound(status.Convert(err).Message()))
+		return
+	}
+	if status.Code(err) == codes.AlreadyExists || isImageAlreadyExistsError(err) {
+		response.Error(c, response.ErrConflict("image already exists"))
+		return
+	}
+	if status.Code(err) == codes.InvalidArgument {
+		response.Error(c, response.ErrBadRequest(status.Convert(err).Message()))
+		return
+	}
+	h.logger.Error(message, "error", err)
+	response.Error(c, response.ErrInternal(message))
+}
+
 func validateImageID(imageID string) error {
 	if imageID == "" {
 		return errors.New("imageID is required")
@@ -322,27 +313,16 @@ func shouldRemoveImageDir(rootDir string, imageID string, rootfsPath string) boo
 	return rootfsPath == "" || filepath.Dir(rootfsPath) == imageDir
 }
 
-func isLocalRootfsFile(value string) bool {
-	if value == "" {
-		return false
-	}
-	if strings.HasPrefix(value, "/") || strings.HasPrefix(value, ".") {
-		info, err := os.Stat(value)
-		return err == nil && !info.IsDir()
-	}
-	return false
-}
-
-func copyLocalFile(src string, dst string) error {
+func copyImageRootfs(src string, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {
-		return fmt.Errorf("read source %q: %w", src, err)
+		return fmt.Errorf("read template rootfs %q: %w", src, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return fmt.Errorf("create destination dir: %w", err)
+		return fmt.Errorf("create image rootfs dir: %w", err)
 	}
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return fmt.Errorf("write destination %q: %w", dst, err)
+		return fmt.Errorf("write image rootfs %q: %w", dst, err)
 	}
 	return nil
 }

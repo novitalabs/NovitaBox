@@ -1,13 +1,18 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -38,6 +43,28 @@ func (m *processManager) get(id string) (*managedProcess, bool) {
 	defer m.mu.RUnlock()
 	proc, ok := m.processes[id]
 	return proc, ok
+}
+
+func (m *processManager) getByPID(pid uint32) (*managedProcess, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, proc := range m.processes {
+		if proc.pid() == pid {
+			return proc, true
+		}
+	}
+	return nil, false
+}
+
+func (m *processManager) getByTag(tag string) (*managedProcess, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, proc := range m.processes {
+		if proc.Tag == tag {
+			return proc, true
+		}
+	}
+	return nil, false
 }
 
 func (m *processManager) list() []processInfo {
@@ -193,6 +220,105 @@ type processEvent struct {
 	Exit    *processExit `json:"exit,omitempty"`
 }
 
+type connectProcessConfig struct {
+	Cmd  string            `json:"cmd"`
+	Args []string          `json:"args,omitempty"`
+	Envs map[string]string `json:"envs,omitempty"`
+	Cwd  *string           `json:"cwd,omitempty"`
+}
+
+type connectPTY struct {
+	Size *connectPTYSize `json:"size,omitempty"`
+}
+
+type connectPTYSize struct {
+	Cols uint32 `json:"cols,omitempty"`
+	Rows uint32 `json:"rows,omitempty"`
+}
+
+type connectProcessSelector struct {
+	PID uint32 `json:"pid,omitempty"`
+	Tag string `json:"tag,omitempty"`
+}
+
+type connectStartRequest struct {
+	Process *connectProcessConfig `json:"process"`
+	PTY     *connectPTY           `json:"pty,omitempty"`
+	Tag     *string               `json:"tag,omitempty"`
+	Stdin   *bool                 `json:"stdin,omitempty"`
+}
+
+type connectConnectRequest struct {
+	Process *connectProcessSelector `json:"process"`
+}
+
+type connectUpdateRequest struct {
+	Process *connectProcessSelector `json:"process"`
+	PTY     *connectPTY             `json:"pty,omitempty"`
+}
+
+type connectSendInputRequest struct {
+	Process *connectProcessSelector `json:"process"`
+	Input   *connectProcessInput    `json:"input"`
+}
+
+type connectSendSignalRequest struct {
+	Process *connectProcessSelector `json:"process"`
+	Signal  uint32                  `json:"signal"`
+}
+
+type connectProcessInput struct {
+	Stdin string `json:"stdin,omitempty"`
+	PTY   string `json:"pty,omitempty"`
+}
+
+type connectListResponse struct {
+	Processes []connectProcessInfo `json:"processes"`
+}
+
+type connectProcessInfo struct {
+	Config connectProcessConfig `json:"config"`
+	PID    uint32               `json:"pid"`
+	Tag    string               `json:"tag,omitempty"`
+}
+
+type connectStreamResponse struct {
+	Event connectProcessEvent `json:"event"`
+}
+
+type connectProcessEvent struct {
+	Start     *connectStartEvent     `json:"start,omitempty"`
+	Data      *connectDataEvent      `json:"data,omitempty"`
+	End       *connectEndEvent       `json:"end,omitempty"`
+	Keepalive *connectKeepaliveEvent `json:"keepalive,omitempty"`
+}
+
+type connectStartEvent struct {
+	PID uint32 `json:"pid"`
+}
+
+type connectDataEvent struct {
+	Stdout string `json:"stdout,omitempty"`
+	Stderr string `json:"stderr,omitempty"`
+	PTY    string `json:"pty,omitempty"`
+}
+
+type connectEndEvent struct {
+	ExitCode int32   `json:"exitCode"`
+	Exited   bool    `json:"exited"`
+	Status   string  `json:"status"`
+	Error    *string `json:"error,omitempty"`
+}
+
+type connectKeepaliveEvent struct{}
+
+type connectCodec int
+
+const (
+	connectCodecJSON connectCodec = iota
+	connectCodecProto
+)
+
 func (s *Server) handleProcesses(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -249,6 +375,184 @@ func (s *Server) handleStartProcess(w http.ResponseWriter, r *http.Request) {
 	proc.start()
 
 	writeJSON(w, http.StatusCreated, startProcessResponse{Process: proc.info()})
+}
+
+func (s *Server) handleConnectList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	processes := s.processes.list()
+	out := make([]connectProcessInfo, 0, len(processes))
+	for _, proc := range processes {
+		out = append(out, connectProcessInfoFromProcessInfo(proc))
+	}
+	writeConnectUnary(w, connectCodecFromRequest(r), connectListResponse{Processes: out})
+}
+
+func (s *Server) handleConnectStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	codec := connectCodecFromRequest(r)
+	var req connectStartRequest
+	if err := readConnectRequest(r, codec, &req); err != nil {
+		http.Error(w, "invalid connect start request body", http.StatusBadRequest)
+		return
+	}
+	if req.Process == nil || req.Process.Cmd == "" {
+		http.Error(w, "process.cmd is required", http.StatusBadRequest)
+		return
+	}
+
+	rows, cols := connectPTYSizeValue(req.PTY, 24, 80)
+	cmd, terminal, err := startPTYProcess(req.Process.Cmd, req.Process.Args, connectString(req.Process.Cwd), connectEnv(req.Process.Envs), cols, rows)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	id, err := newProcessID()
+	if err != nil {
+		_ = terminal.Close()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		http.Error(w, "generate process id failed", http.StatusInternalServerError)
+		return
+	}
+	proc := &managedProcess{
+		ID:       id,
+		Tag:      connectString(req.Tag),
+		Cmd:      append([]string{req.Process.Cmd}, req.Process.Args...),
+		Cwd:      connectString(req.Process.Cwd),
+		TTY:      true,
+		Started:  time.Now().UTC(),
+		cmd:      cmd,
+		terminal: terminal,
+		manager:  s.processes,
+		done:     make(chan struct{}),
+		output:   newOutputHub(),
+	}
+	s.processes.add(proc)
+	proc.start()
+	s.streamConnectProcess(w, r, codec, proc)
+}
+
+func (s *Server) handleConnectAttach(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	codec := connectCodecFromRequest(r)
+	var req connectConnectRequest
+	if err := readConnectRequest(r, codec, &req); err != nil {
+		http.Error(w, "invalid connect request body", http.StatusBadRequest)
+		return
+	}
+	proc, ok := s.processFromSelector(req.Process)
+	if !ok {
+		http.Error(w, "process not found", http.StatusNotFound)
+		return
+	}
+	s.streamConnectProcess(w, r, codec, proc)
+}
+
+func (s *Server) handleConnectUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	codec := connectCodecFromRequest(r)
+	var req connectUpdateRequest
+	if err := readConnectRequest(r, codec, &req); err != nil {
+		http.Error(w, "invalid update request body", http.StatusBadRequest)
+		return
+	}
+	proc, ok := s.processFromSelector(req.Process)
+	if !ok {
+		http.Error(w, "process not found", http.StatusNotFound)
+		return
+	}
+	if req.PTY != nil {
+		rows, cols := connectPTYSizeValue(req.PTY, 24, 80)
+		if err := resizePTY(proc.terminal, cols, rows); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	writeConnectUnary(w, codec, map[string]any{})
+}
+
+func (s *Server) handleConnectSendInput(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	codec := connectCodecFromRequest(r)
+	var req connectSendInputRequest
+	if err := readConnectRequest(r, codec, &req); err != nil {
+		http.Error(w, "invalid send input request body", http.StatusBadRequest)
+		return
+	}
+	proc, ok := s.processFromSelector(req.Process)
+	if !ok {
+		http.Error(w, "process not found", http.StatusNotFound)
+		return
+	}
+	if req.Input == nil {
+		http.Error(w, "input is required", http.StatusBadRequest)
+		return
+	}
+	payload, err := decodeConnectInput(req.Input)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(payload) > 0 {
+		if _, err := proc.terminal.Write(payload); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	writeConnectUnary(w, codec, map[string]any{})
+}
+
+func (s *Server) handleConnectSendSignal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	codec := connectCodecFromRequest(r)
+	var req connectSendSignalRequest
+	if err := readConnectRequest(r, codec, &req); err != nil {
+		http.Error(w, "invalid send signal request body", http.StatusBadRequest)
+		return
+	}
+	proc, ok := s.processFromSelector(req.Process)
+	if !ok {
+		http.Error(w, "process not found", http.StatusNotFound)
+		return
+	}
+	if err := signalProcess(proc, signalFromNumber(req.Signal)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeConnectUnary(w, codec, map[string]any{})
+}
+
+func (s *Server) processFromSelector(selector *connectProcessSelector) (*managedProcess, bool) {
+	if selector == nil {
+		return nil, false
+	}
+	if selector.PID > 0 {
+		return s.processes.getByPID(selector.PID)
+	}
+	if selector.Tag != "" {
+		return s.processes.getByTag(selector.Tag)
+	}
+	return nil, false
 }
 
 func (s *Server) handleProcess(w http.ResponseWriter, r *http.Request) {
@@ -350,15 +654,31 @@ func (s *Server) handleSignalProcess(w http.ResponseWriter, r *http.Request, pro
 	case "SIGHUP", "HUP", "1":
 		sig = syscall.SIGHUP
 	}
-	if proc.cmd.Process == nil {
-		http.Error(w, "process is not running", http.StatusConflict)
-		return
-	}
-	if err := proc.cmd.Process.Signal(sig); err != nil {
+	if err := signalProcess(proc, sig); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func signalFromNumber(signal uint32) syscall.Signal {
+	switch signal {
+	case 9:
+		return syscall.SIGKILL
+	case 2:
+		return syscall.SIGINT
+	case 1:
+		return syscall.SIGHUP
+	default:
+		return syscall.SIGTERM
+	}
+}
+
+func signalProcess(proc *managedProcess, sig syscall.Signal) error {
+	if proc.cmd.Process == nil {
+		return fmt.Errorf("process is not running")
+	}
+	return proc.cmd.Process.Signal(sig)
 }
 
 func (s *Server) handleWaitProcess(w http.ResponseWriter, r *http.Request, proc *managedProcess) {
@@ -428,6 +748,52 @@ func (p *managedProcess) copyWebSocketInput(ws *websocket.Conn) error {
 	}
 }
 
+func (s *Server) streamConnectProcess(w http.ResponseWriter, r *http.Request, codec connectCodec, proc *managedProcess) {
+	w.Header().Set("Content-Type", connectContentType(codec))
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	writer := newConnectStreamWriter(w, codec)
+	if err := writer.write(connectStreamResponse{Event: connectProcessEvent{Start: &connectStartEvent{PID: proc.pid()}}}); err != nil {
+		return
+	}
+
+	output, cancel := proc.output.subscribe()
+	defer cancel()
+	keepalive := time.NewTicker(15 * time.Second)
+	defer keepalive.Stop()
+
+	for {
+		select {
+		case payload, ok := <-output:
+			if !ok {
+				_ = writer.write(connectStreamResponse{Event: connectProcessEvent{End: connectEndFromProcessExit(proc.exitInfo())}})
+				_ = writer.end()
+				return
+			}
+			if len(payload) == 0 {
+				continue
+			}
+			err := writer.write(connectStreamResponse{Event: connectProcessEvent{
+				Data: &connectDataEvent{PTY: base64.StdEncoding.EncodeToString(payload)},
+			}})
+			if err != nil {
+				return
+			}
+		case <-proc.done:
+			_ = writer.write(connectStreamResponse{Event: connectProcessEvent{End: connectEndFromProcessExit(proc.exitInfo())}})
+			_ = writer.end()
+			return
+		case <-keepalive.C:
+			if err := writer.write(connectStreamResponse{Event: connectProcessEvent{Keepalive: &connectKeepaliveEvent{}}}); err != nil {
+				return
+			}
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
 func copyProcessOutput(ws *websocket.Conn, output <-chan []byte, done <-chan struct{}, proc *managedProcess) error {
 	for {
 		select {
@@ -445,6 +811,13 @@ func copyProcessOutput(ws *websocket.Conn, output <-chan []byte, done <-chan str
 			return websocket.JSON.Send(ws, processEvent{Type: "end", Exit: proc.exitInfo()})
 		}
 	}
+}
+
+func (p *managedProcess) pid() uint32 {
+	if p == nil || p.cmd == nil || p.cmd.Process == nil || p.cmd.Process.Pid <= 0 {
+		return 0
+	}
+	return uint32(p.cmd.Process.Pid)
 }
 
 func (p *managedProcess) info() processInfo {
@@ -484,6 +857,37 @@ func (p *managedProcess) exitInfo() *processExit {
 	return &out
 }
 
+func connectProcessInfoFromProcessInfo(proc processInfo) connectProcessInfo {
+	cfg := connectProcessConfig{}
+	if len(proc.Cmd) > 0 {
+		cfg.Cmd = proc.Cmd[0]
+		cfg.Args = append([]string(nil), proc.Cmd[1:]...)
+	}
+	if proc.Cwd != "" {
+		cfg.Cwd = &proc.Cwd
+	}
+	return connectProcessInfo{
+		Config: cfg,
+		PID:    uint32(proc.PID),
+		Tag:    proc.Tag,
+	}
+}
+
+func connectEndFromProcessExit(exit *processExit) *connectEndEvent {
+	if exit == nil {
+		return &connectEndEvent{Exited: true}
+	}
+	out := &connectEndEvent{
+		ExitCode: int32(exit.ExitCode),
+		Exited:   exit.Exited,
+		Status:   exit.Status,
+	}
+	if exit.Error != "" {
+		out.Error = &exit.Error
+	}
+	return out
+}
+
 func parseProcessPath(path string) (string, string, bool) {
 	const prefix = "/processes/"
 	if len(path) <= len(prefix) || path[:len(prefix)] != prefix {
@@ -509,6 +913,535 @@ func newProcessID() (string, error) {
 		return "", err
 	}
 	return "prc-" + hex.EncodeToString(raw[:]), nil
+}
+
+func connectPTYSizeValue(pty *connectPTY, fallbackRows uint16, fallbackCols uint16) (uint16, uint16) {
+	if pty == nil || pty.Size == nil {
+		return fallbackRows, fallbackCols
+	}
+	rows := uint16(pty.Size.Rows)
+	cols := uint16(pty.Size.Cols)
+	if rows == 0 {
+		rows = fallbackRows
+	}
+	if cols == 0 {
+		cols = fallbackCols
+	}
+	return rows, cols
+}
+
+func connectString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func connectEnv(env map[string]string) []string {
+	out := make([]string, 0, len(env))
+	for key, value := range env {
+		out = append(out, key+"="+value)
+	}
+	return out
+}
+
+func decodeConnectInput(input *connectProcessInput) ([]byte, error) {
+	raw := input.PTY
+	if raw == "" {
+		raw = input.Stdin
+	}
+	if raw == "" {
+		return nil, nil
+	}
+	payload, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode input bytes: %w", err)
+	}
+	return payload, nil
+}
+
+func connectCodecFromRequest(r *http.Request) connectCodec {
+	if strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "proto") {
+		return connectCodecProto
+	}
+	return connectCodecJSON
+}
+
+func connectContentType(codec connectCodec) string {
+	if codec == connectCodecProto {
+		return "application/connect+proto"
+	}
+	return "application/connect+json"
+}
+
+func readConnectRequest(r *http.Request, codec connectCodec, out any) error {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	body = bytes.TrimSpace(body)
+	if len(body) >= 5 && (body[0] == 0 || body[0] == 1) {
+		size := binary.BigEndian.Uint32(body[1:5])
+		if int(size) <= len(body)-5 {
+			body = body[5 : 5+size]
+		}
+	}
+	if len(body) == 0 {
+		body = []byte("{}")
+	}
+	if codec == connectCodecProto {
+		return unmarshalConnectProtoRequest(body, out)
+	}
+	return json.Unmarshal(body, out)
+}
+
+type connectStreamWriter struct {
+	w       http.ResponseWriter
+	flusher http.Flusher
+	codec   connectCodec
+}
+
+func newConnectStreamWriter(w http.ResponseWriter, codec connectCodec) connectStreamWriter {
+	flusher, _ := w.(http.Flusher)
+	return connectStreamWriter{w: w, flusher: flusher, codec: codec}
+}
+
+func (w connectStreamWriter) write(value any) error {
+	payload, err := marshalConnectResponse(w.codec, value)
+	if err != nil {
+		return err
+	}
+	if err := writeConnectEnvelope(w.w, 0, payload); err != nil {
+		return err
+	}
+	if w.flusher != nil {
+		w.flusher.Flush()
+	}
+	return nil
+}
+
+func (w connectStreamWriter) end() error {
+	payload := []byte("{}")
+	if w.codec == connectCodecProto {
+		payload = nil
+	}
+	if err := writeConnectEnvelope(w.w, 2, payload); err != nil {
+		return err
+	}
+	if w.flusher != nil {
+		w.flusher.Flush()
+	}
+	return nil
+}
+
+func writeConnectEnvelope(w io.Writer, flags byte, payload []byte) error {
+	var header [5]byte
+	header[0] = flags
+	binary.BigEndian.PutUint32(header[1:], uint32(len(payload)))
+	if _, err := w.Write(header[:]); err != nil {
+		return err
+	}
+	_, err := w.Write(payload)
+	return err
+}
+
+func marshalConnectResponse(codec connectCodec, value any) ([]byte, error) {
+	if codec == connectCodecProto {
+		return marshalConnectProto(value)
+	}
+	return json.Marshal(value)
+}
+
+func unmarshalConnectProtoRequest(payload []byte, out any) error {
+	switch req := out.(type) {
+	case *connectStartRequest:
+		return unmarshalProtoStartRequest(payload, req)
+	case *connectConnectRequest:
+		var selector connectProcessSelector
+		if err := unmarshalProtoSelectorMessage(payload, 1, &selector); err != nil {
+			return err
+		}
+		req.Process = &selector
+		return nil
+	case *connectUpdateRequest:
+		return unmarshalProtoUpdateRequest(payload, req)
+	case *connectSendInputRequest:
+		return unmarshalProtoSendInputRequest(payload, req)
+	case *connectSendSignalRequest:
+		return unmarshalProtoSendSignalRequest(payload, req)
+	default:
+		if len(payload) == 0 {
+			return nil
+		}
+		return fmt.Errorf("unsupported proto request %T", out)
+	}
+}
+
+func marshalConnectProto(value any) ([]byte, error) {
+	switch v := value.(type) {
+	case connectStreamResponse:
+		event := marshalProtoProcessEvent(v.Event)
+		return protoBytesField(1, event), nil
+	case connectListResponse:
+		var out []byte
+		for _, proc := range v.Processes {
+			out = append(out, protoBytesField(1, marshalProtoProcessInfo(proc))...)
+		}
+		return out, nil
+	case map[string]any:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported proto response %T", value)
+	}
+}
+
+func marshalProtoProcessInfo(proc connectProcessInfo) []byte {
+	var out []byte
+	out = append(out, protoBytesField(1, marshalProtoProcessConfig(proc.Config))...)
+	if proc.PID > 0 {
+		out = append(out, protoVarintField(2, uint64(proc.PID))...)
+	}
+	if proc.Tag != "" {
+		out = append(out, protoStringField(3, proc.Tag)...)
+	}
+	return out
+}
+
+func marshalProtoProcessConfig(cfg connectProcessConfig) []byte {
+	var out []byte
+	if cfg.Cmd != "" {
+		out = append(out, protoStringField(1, cfg.Cmd)...)
+	}
+	for _, arg := range cfg.Args {
+		out = append(out, protoStringField(2, arg)...)
+	}
+	for key, value := range cfg.Envs {
+		var entry []byte
+		entry = append(entry, protoStringField(1, key)...)
+		entry = append(entry, protoStringField(2, value)...)
+		out = append(out, protoBytesField(3, entry)...)
+	}
+	if cfg.Cwd != nil {
+		out = append(out, protoStringField(4, *cfg.Cwd)...)
+	}
+	return out
+}
+
+func marshalProtoProcessEvent(event connectProcessEvent) []byte {
+	switch {
+	case event.Start != nil:
+		return protoBytesField(1, protoVarintField(1, uint64(event.Start.PID)))
+	case event.Data != nil:
+		return protoBytesField(2, marshalProtoDataEvent(event.Data))
+	case event.End != nil:
+		return protoBytesField(3, marshalProtoEndEvent(event.End))
+	case event.Keepalive != nil:
+		return protoBytesField(4, nil)
+	default:
+		return nil
+	}
+}
+
+func marshalProtoDataEvent(event *connectDataEvent) []byte {
+	switch {
+	case event.Stdout != "":
+		payload, _ := base64.StdEncoding.DecodeString(event.Stdout)
+		return protoBytesField(1, payload)
+	case event.Stderr != "":
+		payload, _ := base64.StdEncoding.DecodeString(event.Stderr)
+		return protoBytesField(2, payload)
+	case event.PTY != "":
+		payload, _ := base64.StdEncoding.DecodeString(event.PTY)
+		return protoBytesField(3, payload)
+	default:
+		return nil
+	}
+}
+
+func marshalProtoEndEvent(event *connectEndEvent) []byte {
+	var out []byte
+	out = append(out, protoVarintField(1, uint64(encodeZigZag32(event.ExitCode)))...)
+	out = append(out, protoVarintField(2, boolVarint(event.Exited))...)
+	if event.Status != "" {
+		out = append(out, protoStringField(3, event.Status)...)
+	}
+	if event.Error != nil {
+		out = append(out, protoStringField(4, *event.Error)...)
+	}
+	return out
+}
+
+func unmarshalProtoStartRequest(payload []byte, req *connectStartRequest) error {
+	return walkProtoFields(payload, func(field int, wire int, value []byte, u uint64) error {
+		switch field {
+		case 1:
+			cfg, err := unmarshalProtoProcessConfig(value)
+			if err != nil {
+				return err
+			}
+			req.Process = cfg
+		case 2:
+			pty, err := unmarshalProtoPTY(value)
+			if err != nil {
+				return err
+			}
+			req.PTY = pty
+		case 3:
+			tag := string(value)
+			req.Tag = &tag
+		case 4:
+			stdin := u != 0
+			req.Stdin = &stdin
+		}
+		return nil
+	})
+}
+
+func unmarshalProtoUpdateRequest(payload []byte, req *connectUpdateRequest) error {
+	return walkProtoFields(payload, func(field int, wire int, value []byte, _ uint64) error {
+		switch field {
+		case 1:
+			var selector connectProcessSelector
+			if err := unmarshalProtoSelector(value, &selector); err != nil {
+				return err
+			}
+			req.Process = &selector
+		case 2:
+			pty, err := unmarshalProtoPTY(value)
+			if err != nil {
+				return err
+			}
+			req.PTY = pty
+		}
+		return nil
+	})
+}
+
+func unmarshalProtoSendInputRequest(payload []byte, req *connectSendInputRequest) error {
+	return walkProtoFields(payload, func(field int, wire int, value []byte, _ uint64) error {
+		switch field {
+		case 1:
+			var selector connectProcessSelector
+			if err := unmarshalProtoSelector(value, &selector); err != nil {
+				return err
+			}
+			req.Process = &selector
+		case 2:
+			input, err := unmarshalProtoProcessInput(value)
+			if err != nil {
+				return err
+			}
+			req.Input = input
+		}
+		return nil
+	})
+}
+
+func unmarshalProtoSendSignalRequest(payload []byte, req *connectSendSignalRequest) error {
+	return walkProtoFields(payload, func(field int, wire int, value []byte, u uint64) error {
+		switch field {
+		case 1:
+			var selector connectProcessSelector
+			if err := unmarshalProtoSelector(value, &selector); err != nil {
+				return err
+			}
+			req.Process = &selector
+		case 2:
+			req.Signal = uint32(u)
+		}
+		return nil
+	})
+}
+
+func unmarshalProtoSelectorMessage(payload []byte, fieldNumber int, out *connectProcessSelector) error {
+	return walkProtoFields(payload, func(field int, wire int, value []byte, _ uint64) error {
+		if field != fieldNumber {
+			return nil
+		}
+		return unmarshalProtoSelector(value, out)
+	})
+}
+
+func unmarshalProtoProcessConfig(payload []byte) (*connectProcessConfig, error) {
+	cfg := &connectProcessConfig{Envs: map[string]string{}}
+	err := walkProtoFields(payload, func(field int, wire int, value []byte, _ uint64) error {
+		switch field {
+		case 1:
+			cfg.Cmd = string(value)
+		case 2:
+			cfg.Args = append(cfg.Args, string(value))
+		case 3:
+			key, val, err := unmarshalProtoMapEntry(value)
+			if err != nil {
+				return err
+			}
+			cfg.Envs[key] = val
+		case 4:
+			cwd := string(value)
+			cfg.Cwd = &cwd
+		}
+		return nil
+	})
+	if len(cfg.Envs) == 0 {
+		cfg.Envs = nil
+	}
+	return cfg, err
+}
+
+func unmarshalProtoMapEntry(payload []byte) (string, string, error) {
+	var key string
+	var val string
+	err := walkProtoFields(payload, func(field int, wire int, value []byte, _ uint64) error {
+		switch field {
+		case 1:
+			key = string(value)
+		case 2:
+			val = string(value)
+		}
+		return nil
+	})
+	return key, val, err
+}
+
+func unmarshalProtoPTY(payload []byte) (*connectPTY, error) {
+	pty := &connectPTY{}
+	err := walkProtoFields(payload, func(field int, wire int, value []byte, _ uint64) error {
+		if field != 1 {
+			return nil
+		}
+		size := &connectPTYSize{}
+		if err := walkProtoFields(value, func(field int, wire int, _ []byte, u uint64) error {
+			switch field {
+			case 1:
+				size.Cols = uint32(u)
+			case 2:
+				size.Rows = uint32(u)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		pty.Size = size
+		return nil
+	})
+	return pty, err
+}
+
+func unmarshalProtoSelector(payload []byte, out *connectProcessSelector) error {
+	return walkProtoFields(payload, func(field int, wire int, value []byte, u uint64) error {
+		switch field {
+		case 1:
+			out.PID = uint32(u)
+		case 2:
+			out.Tag = string(value)
+		}
+		return nil
+	})
+}
+
+func unmarshalProtoProcessInput(payload []byte) (*connectProcessInput, error) {
+	input := &connectProcessInput{}
+	err := walkProtoFields(payload, func(field int, wire int, value []byte, _ uint64) error {
+		switch field {
+		case 1:
+			input.Stdin = base64.StdEncoding.EncodeToString(value)
+		case 2:
+			input.PTY = base64.StdEncoding.EncodeToString(value)
+		}
+		return nil
+	})
+	return input, err
+}
+
+func walkProtoFields(payload []byte, fn func(field int, wire int, value []byte, varint uint64) error) error {
+	for len(payload) > 0 {
+		key, n := binary.Uvarint(payload)
+		if n <= 0 {
+			return fmt.Errorf("invalid proto field key")
+		}
+		payload = payload[n:]
+		field := int(key >> 3)
+		wire := int(key & 0x7)
+		switch wire {
+		case 0:
+			value, n := binary.Uvarint(payload)
+			if n <= 0 {
+				return fmt.Errorf("invalid proto varint")
+			}
+			payload = payload[n:]
+			if err := fn(field, wire, nil, value); err != nil {
+				return err
+			}
+		case 2:
+			size, n := binary.Uvarint(payload)
+			if n <= 0 {
+				return fmt.Errorf("invalid proto length")
+			}
+			payload = payload[n:]
+			if uint64(len(payload)) < size {
+				return fmt.Errorf("proto length exceeds payload")
+			}
+			value := payload[:size]
+			payload = payload[size:]
+			if err := fn(field, wire, value, 0); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported proto wire type %d", wire)
+		}
+	}
+	return nil
+}
+
+func protoStringField(field int, value string) []byte {
+	return protoBytesField(field, []byte(value))
+}
+
+func protoBytesField(field int, value []byte) []byte {
+	out := protoVarint(uint64(field<<3 | 2))
+	out = append(out, protoVarint(uint64(len(value)))...)
+	out = append(out, value...)
+	return out
+}
+
+func protoVarintField(field int, value uint64) []byte {
+	out := protoVarint(uint64(field << 3))
+	out = append(out, protoVarint(value)...)
+	return out
+}
+
+func protoVarint(value uint64) []byte {
+	var buf [10]byte
+	n := binary.PutUvarint(buf[:], value)
+	return append([]byte(nil), buf[:n]...)
+}
+
+func encodeZigZag32(value int32) uint32 {
+	return uint32(value<<1) ^ uint32(value>>31)
+}
+
+func boolVarint(value bool) uint64 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func writeConnectUnary(w http.ResponseWriter, codec connectCodec, body any) {
+	if codec == connectCodecProto {
+		w.Header().Set("Content-Type", "application/proto")
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(http.StatusOK)
+	if codec == connectCodecProto {
+		payload, err := marshalConnectProto(body)
+		if err == nil {
+			_, _ = w.Write(payload)
+		}
+		return
+	}
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

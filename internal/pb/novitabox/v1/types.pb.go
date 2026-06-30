@@ -767,6 +767,74 @@ func (x *RootfsSpec) GetFormat() string {
 	return ""
 }
 
+type DriveSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DriveId       string                 `protobuf:"bytes,1,opt,name=drive_id,json=driveId,proto3" json:"drive_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Readonly      bool                   `protobuf:"varint,3,opt,name=readonly,proto3" json:"readonly,omitempty"`
+	Format        string                 `protobuf:"bytes,4,opt,name=format,proto3" json:"format,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DriveSpec) Reset() {
+	*x = DriveSpec{}
+	mi := &file_novitabox_v1_types_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DriveSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DriveSpec) ProtoMessage() {}
+
+func (x *DriveSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_types_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DriveSpec.ProtoReflect.Descriptor instead.
+func (*DriveSpec) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *DriveSpec) GetDriveId() string {
+	if x != nil {
+		return x.DriveId
+	}
+	return ""
+}
+
+func (x *DriveSpec) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *DriveSpec) GetReadonly() bool {
+	if x != nil {
+		return x.Readonly
+	}
+	return false
+}
+
+func (x *DriveSpec) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
 type SnapshotSpec struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MemfilePath   string                 `protobuf:"bytes,1,opt,name=memfile_path,json=memfilePath,proto3" json:"memfile_path,omitempty"`
@@ -778,7 +846,7 @@ type SnapshotSpec struct {
 
 func (x *SnapshotSpec) Reset() {
 	*x = SnapshotSpec{}
-	mi := &file_novitabox_v1_types_proto_msgTypes[7]
+	mi := &file_novitabox_v1_types_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -790,7 +858,7 @@ func (x *SnapshotSpec) String() string {
 func (*SnapshotSpec) ProtoMessage() {}
 
 func (x *SnapshotSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_types_proto_msgTypes[7]
+	mi := &file_novitabox_v1_types_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -803,7 +871,7 @@ func (x *SnapshotSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotSpec.ProtoReflect.Descriptor instead.
 func (*SnapshotSpec) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{7}
+	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SnapshotSpec) GetMemfilePath() string {
@@ -841,7 +909,7 @@ type NetworkSpec struct {
 
 func (x *NetworkSpec) Reset() {
 	*x = NetworkSpec{}
-	mi := &file_novitabox_v1_types_proto_msgTypes[8]
+	mi := &file_novitabox_v1_types_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -853,7 +921,7 @@ func (x *NetworkSpec) String() string {
 func (*NetworkSpec) ProtoMessage() {}
 
 func (x *NetworkSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_types_proto_msgTypes[8]
+	mi := &file_novitabox_v1_types_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -866,7 +934,7 @@ func (x *NetworkSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkSpec.ProtoReflect.Descriptor instead.
 func (*NetworkSpec) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{8}
+	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *NetworkSpec) GetNamespaceName() string {
@@ -923,7 +991,7 @@ type AgentSpec struct {
 
 func (x *AgentSpec) Reset() {
 	*x = AgentSpec{}
-	mi := &file_novitabox_v1_types_proto_msgTypes[9]
+	mi := &file_novitabox_v1_types_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -935,7 +1003,7 @@ func (x *AgentSpec) String() string {
 func (*AgentSpec) ProtoMessage() {}
 
 func (x *AgentSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_types_proto_msgTypes[9]
+	mi := &file_novitabox_v1_types_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -948,7 +1016,7 @@ func (x *AgentSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentSpec.ProtoReflect.Descriptor instead.
 func (*AgentSpec) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{9}
+	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *AgentSpec) GetType() string {
@@ -993,7 +1061,7 @@ type JailerSpec struct {
 
 func (x *JailerSpec) Reset() {
 	*x = JailerSpec{}
-	mi := &file_novitabox_v1_types_proto_msgTypes[10]
+	mi := &file_novitabox_v1_types_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1005,7 +1073,7 @@ func (x *JailerSpec) String() string {
 func (*JailerSpec) ProtoMessage() {}
 
 func (x *JailerSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_types_proto_msgTypes[10]
+	mi := &file_novitabox_v1_types_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1018,7 +1086,7 @@ func (x *JailerSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JailerSpec.ProtoReflect.Descriptor instead.
 func (*JailerSpec) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{10}
+	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *JailerSpec) GetEnabled() bool {
@@ -1074,6 +1142,7 @@ type RuntimeSpec struct {
 	Network       *NetworkSpec           `protobuf:"bytes,7,opt,name=network,proto3" json:"network,omitempty"`
 	Agent         *AgentSpec             `protobuf:"bytes,8,opt,name=agent,proto3" json:"agent,omitempty"`
 	Jailer        *JailerSpec            `protobuf:"bytes,9,opt,name=jailer,proto3" json:"jailer,omitempty"`
+	ExtraDrives   []*DriveSpec           `protobuf:"bytes,10,rep,name=extra_drives,json=extraDrives,proto3" json:"extra_drives,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,20,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Annotations   map[string]string      `protobuf:"bytes,21,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
@@ -1082,7 +1151,7 @@ type RuntimeSpec struct {
 
 func (x *RuntimeSpec) Reset() {
 	*x = RuntimeSpec{}
-	mi := &file_novitabox_v1_types_proto_msgTypes[11]
+	mi := &file_novitabox_v1_types_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1094,7 +1163,7 @@ func (x *RuntimeSpec) String() string {
 func (*RuntimeSpec) ProtoMessage() {}
 
 func (x *RuntimeSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_types_proto_msgTypes[11]
+	mi := &file_novitabox_v1_types_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1107,7 +1176,7 @@ func (x *RuntimeSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeSpec.ProtoReflect.Descriptor instead.
 func (*RuntimeSpec) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{11}
+	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RuntimeSpec) GetSandboxId() string {
@@ -1173,6 +1242,13 @@ func (x *RuntimeSpec) GetJailer() *JailerSpec {
 	return nil
 }
 
+func (x *RuntimeSpec) GetExtraDrives() []*DriveSpec {
+	if x != nil {
+		return x.ExtraDrives
+	}
+	return nil
+}
+
 func (x *RuntimeSpec) GetLabels() map[string]string {
 	if x != nil {
 		return x.Labels
@@ -1202,7 +1278,7 @@ type RuntimeInfo struct {
 
 func (x *RuntimeInfo) Reset() {
 	*x = RuntimeInfo{}
-	mi := &file_novitabox_v1_types_proto_msgTypes[12]
+	mi := &file_novitabox_v1_types_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1214,7 +1290,7 @@ func (x *RuntimeInfo) String() string {
 func (*RuntimeInfo) ProtoMessage() {}
 
 func (x *RuntimeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_types_proto_msgTypes[12]
+	mi := &file_novitabox_v1_types_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1227,7 +1303,7 @@ func (x *RuntimeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeInfo.ProtoReflect.Descriptor instead.
 func (*RuntimeInfo) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{12}
+	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RuntimeInfo) GetSandboxId() string {
@@ -1304,7 +1380,7 @@ type RuntimeCapabilities struct {
 
 func (x *RuntimeCapabilities) Reset() {
 	*x = RuntimeCapabilities{}
-	mi := &file_novitabox_v1_types_proto_msgTypes[13]
+	mi := &file_novitabox_v1_types_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1316,7 +1392,7 @@ func (x *RuntimeCapabilities) String() string {
 func (*RuntimeCapabilities) ProtoMessage() {}
 
 func (x *RuntimeCapabilities) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_types_proto_msgTypes[13]
+	mi := &file_novitabox_v1_types_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1329,7 +1405,7 @@ func (x *RuntimeCapabilities) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeCapabilities.ProtoReflect.Descriptor instead.
 func (*RuntimeCapabilities) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{13}
+	return file_novitabox_v1_types_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RuntimeCapabilities) GetStartFromImage() bool {
@@ -1527,7 +1603,12 @@ const file_novitabox_v1_types_proto_rawDesc = "" +
 	"RootfsSpec\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1a\n" +
 	"\breadonly\x18\x02 \x01(\bR\breadonly\x12\x16\n" +
-	"\x06format\x18\x03 \x01(\tR\x06format\"{\n" +
+	"\x06format\x18\x03 \x01(\tR\x06format\"n\n" +
+	"\tDriveSpec\x12\x19\n" +
+	"\bdrive_id\x18\x01 \x01(\tR\adriveId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1a\n" +
+	"\breadonly\x18\x03 \x01(\bR\breadonly\x12\x16\n" +
+	"\x06format\x18\x04 \x01(\tR\x06format\"{\n" +
 	"\fSnapshotSpec\x12!\n" +
 	"\fmemfile_path\x18\x01 \x01(\tR\vmemfilePath\x12#\n" +
 	"\rsnapfile_path\x18\x02 \x01(\tR\fsnapfilePath\x12#\n" +
@@ -1554,7 +1635,7 @@ const file_novitabox_v1_types_proto_rawDesc = "" +
 	"\x03gid\x18\x04 \x01(\tR\x03gid\x12\x1f\n" +
 	"\vcgroup_path\x18\x05 \x01(\tR\n" +
 	"cgroupPath\x12'\n" +
-	"\x0fseccomp_profile\x18\x06 \x01(\tR\x0eseccompProfile\"\xd9\x05\n" +
+	"\x0fseccomp_profile\x18\x06 \x01(\tR\x0eseccompProfile\"\x95\x06\n" +
 	"\vRuntimeSpec\x12\x1d\n" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12<\n" +
@@ -1565,7 +1646,9 @@ const file_novitabox_v1_types_proto_rawDesc = "" +
 	"\bsnapshot\x18\x06 \x01(\v2\x1a.novitabox.v1.SnapshotSpecR\bsnapshot\x123\n" +
 	"\anetwork\x18\a \x01(\v2\x19.novitabox.v1.NetworkSpecR\anetwork\x12-\n" +
 	"\x05agent\x18\b \x01(\v2\x17.novitabox.v1.AgentSpecR\x05agent\x120\n" +
-	"\x06jailer\x18\t \x01(\v2\x18.novitabox.v1.JailerSpecR\x06jailer\x12=\n" +
+	"\x06jailer\x18\t \x01(\v2\x18.novitabox.v1.JailerSpecR\x06jailer\x12:\n" +
+	"\fextra_drives\x18\n" +
+	" \x03(\v2\x17.novitabox.v1.DriveSpecR\vextraDrives\x12=\n" +
 	"\x06labels\x18\x14 \x03(\v2%.novitabox.v1.RuntimeSpec.LabelsEntryR\x06labels\x12L\n" +
 	"\vannotations\x18\x15 \x03(\v2*.novitabox.v1.RuntimeSpec.AnnotationsEntryR\vannotations\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
@@ -1647,7 +1730,7 @@ func file_novitabox_v1_types_proto_rawDescGZIP() []byte {
 }
 
 var file_novitabox_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_novitabox_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_novitabox_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_novitabox_v1_types_proto_goTypes = []any{
 	(SandboxState)(0),           // 0: novitabox.v1.SandboxState
 	(RuntimeType)(0),            // 1: novitabox.v1.RuntimeType
@@ -1659,46 +1742,48 @@ var file_novitabox_v1_types_proto_goTypes = []any{
 	(*MachineSpec)(nil),         // 7: novitabox.v1.MachineSpec
 	(*KernelSpec)(nil),          // 8: novitabox.v1.KernelSpec
 	(*RootfsSpec)(nil),          // 9: novitabox.v1.RootfsSpec
-	(*SnapshotSpec)(nil),        // 10: novitabox.v1.SnapshotSpec
-	(*NetworkSpec)(nil),         // 11: novitabox.v1.NetworkSpec
-	(*AgentSpec)(nil),           // 12: novitabox.v1.AgentSpec
-	(*JailerSpec)(nil),          // 13: novitabox.v1.JailerSpec
-	(*RuntimeSpec)(nil),         // 14: novitabox.v1.RuntimeSpec
-	(*RuntimeInfo)(nil),         // 15: novitabox.v1.RuntimeInfo
-	(*RuntimeCapabilities)(nil), // 16: novitabox.v1.RuntimeCapabilities
-	nil,                         // 17: novitabox.v1.SandboxInfo.LabelsEntry
-	nil,                         // 18: novitabox.v1.SandboxInfo.AnnotationsEntry
-	nil,                         // 19: novitabox.v1.SnapshotInfo.LabelsEntry
-	nil,                         // 20: novitabox.v1.TemplateInfo.LabelsEntry
-	nil,                         // 21: novitabox.v1.ImageInfo.LabelsEntry
-	nil,                         // 22: novitabox.v1.RuntimeSpec.LabelsEntry
-	nil,                         // 23: novitabox.v1.RuntimeSpec.AnnotationsEntry
+	(*DriveSpec)(nil),           // 10: novitabox.v1.DriveSpec
+	(*SnapshotSpec)(nil),        // 11: novitabox.v1.SnapshotSpec
+	(*NetworkSpec)(nil),         // 12: novitabox.v1.NetworkSpec
+	(*AgentSpec)(nil),           // 13: novitabox.v1.AgentSpec
+	(*JailerSpec)(nil),          // 14: novitabox.v1.JailerSpec
+	(*RuntimeSpec)(nil),         // 15: novitabox.v1.RuntimeSpec
+	(*RuntimeInfo)(nil),         // 16: novitabox.v1.RuntimeInfo
+	(*RuntimeCapabilities)(nil), // 17: novitabox.v1.RuntimeCapabilities
+	nil,                         // 18: novitabox.v1.SandboxInfo.LabelsEntry
+	nil,                         // 19: novitabox.v1.SandboxInfo.AnnotationsEntry
+	nil,                         // 20: novitabox.v1.SnapshotInfo.LabelsEntry
+	nil,                         // 21: novitabox.v1.TemplateInfo.LabelsEntry
+	nil,                         // 22: novitabox.v1.ImageInfo.LabelsEntry
+	nil,                         // 23: novitabox.v1.RuntimeSpec.LabelsEntry
+	nil,                         // 24: novitabox.v1.RuntimeSpec.AnnotationsEntry
 }
 var file_novitabox_v1_types_proto_depIdxs = []int32{
 	0,  // 0: novitabox.v1.SandboxInfo.state:type_name -> novitabox.v1.SandboxState
 	1,  // 1: novitabox.v1.SandboxInfo.runtime_type:type_name -> novitabox.v1.RuntimeType
-	17, // 2: novitabox.v1.SandboxInfo.labels:type_name -> novitabox.v1.SandboxInfo.LabelsEntry
-	18, // 3: novitabox.v1.SandboxInfo.annotations:type_name -> novitabox.v1.SandboxInfo.AnnotationsEntry
-	19, // 4: novitabox.v1.SnapshotInfo.labels:type_name -> novitabox.v1.SnapshotInfo.LabelsEntry
-	20, // 5: novitabox.v1.TemplateInfo.labels:type_name -> novitabox.v1.TemplateInfo.LabelsEntry
-	21, // 6: novitabox.v1.ImageInfo.labels:type_name -> novitabox.v1.ImageInfo.LabelsEntry
+	18, // 2: novitabox.v1.SandboxInfo.labels:type_name -> novitabox.v1.SandboxInfo.LabelsEntry
+	19, // 3: novitabox.v1.SandboxInfo.annotations:type_name -> novitabox.v1.SandboxInfo.AnnotationsEntry
+	20, // 4: novitabox.v1.SnapshotInfo.labels:type_name -> novitabox.v1.SnapshotInfo.LabelsEntry
+	21, // 5: novitabox.v1.TemplateInfo.labels:type_name -> novitabox.v1.TemplateInfo.LabelsEntry
+	22, // 6: novitabox.v1.ImageInfo.labels:type_name -> novitabox.v1.ImageInfo.LabelsEntry
 	1,  // 7: novitabox.v1.RuntimeSpec.runtime_type:type_name -> novitabox.v1.RuntimeType
 	7,  // 8: novitabox.v1.RuntimeSpec.machine:type_name -> novitabox.v1.MachineSpec
 	8,  // 9: novitabox.v1.RuntimeSpec.kernel:type_name -> novitabox.v1.KernelSpec
 	9,  // 10: novitabox.v1.RuntimeSpec.rootfs:type_name -> novitabox.v1.RootfsSpec
-	10, // 11: novitabox.v1.RuntimeSpec.snapshot:type_name -> novitabox.v1.SnapshotSpec
-	11, // 12: novitabox.v1.RuntimeSpec.network:type_name -> novitabox.v1.NetworkSpec
-	12, // 13: novitabox.v1.RuntimeSpec.agent:type_name -> novitabox.v1.AgentSpec
-	13, // 14: novitabox.v1.RuntimeSpec.jailer:type_name -> novitabox.v1.JailerSpec
-	22, // 15: novitabox.v1.RuntimeSpec.labels:type_name -> novitabox.v1.RuntimeSpec.LabelsEntry
-	23, // 16: novitabox.v1.RuntimeSpec.annotations:type_name -> novitabox.v1.RuntimeSpec.AnnotationsEntry
-	1,  // 17: novitabox.v1.RuntimeInfo.runtime_type:type_name -> novitabox.v1.RuntimeType
-	2,  // 18: novitabox.v1.RuntimeInfo.state:type_name -> novitabox.v1.RuntimeState
-	19, // [19:19] is the sub-list for method output_type
-	19, // [19:19] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	11, // 11: novitabox.v1.RuntimeSpec.snapshot:type_name -> novitabox.v1.SnapshotSpec
+	12, // 12: novitabox.v1.RuntimeSpec.network:type_name -> novitabox.v1.NetworkSpec
+	13, // 13: novitabox.v1.RuntimeSpec.agent:type_name -> novitabox.v1.AgentSpec
+	14, // 14: novitabox.v1.RuntimeSpec.jailer:type_name -> novitabox.v1.JailerSpec
+	10, // 15: novitabox.v1.RuntimeSpec.extra_drives:type_name -> novitabox.v1.DriveSpec
+	23, // 16: novitabox.v1.RuntimeSpec.labels:type_name -> novitabox.v1.RuntimeSpec.LabelsEntry
+	24, // 17: novitabox.v1.RuntimeSpec.annotations:type_name -> novitabox.v1.RuntimeSpec.AnnotationsEntry
+	1,  // 18: novitabox.v1.RuntimeInfo.runtime_type:type_name -> novitabox.v1.RuntimeType
+	2,  // 19: novitabox.v1.RuntimeInfo.state:type_name -> novitabox.v1.RuntimeState
+	20, // [20:20] is the sub-list for method output_type
+	20, // [20:20] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_novitabox_v1_types_proto_init() }
@@ -1712,7 +1797,7 @@ func file_novitabox_v1_types_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_novitabox_v1_types_proto_rawDesc), len(file_novitabox_v1_types_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   21,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -5,37 +5,43 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/novitalabs/NovitaBox/internal/config"
 	"github.com/novitalabs/NovitaBox/internal/log"
-	"github.com/novitalabs/NovitaBox/internal/wsutil"
 	"golang.org/x/net/websocket"
 )
+
+const boxdUpdateMarker = "boxd-agent-update-test-20260629-1"
 
 type Server struct {
 	cfg        config.Config
 	logger     *log.Logger
 	httpServer *http.Server
 	processes  *processManager
+	startedAt  time.Time
 }
 
 func New(cfg config.Config, logger *log.Logger) *Server {
-	s := &Server{cfg: cfg, logger: logger, processes: newProcessManager()}
+	s := &Server{cfg: cfg, logger: logger, processes: newProcessManager(), startedAt: time.Now()}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/admin/reexec", s.handleReexec)
 	mux.HandleFunc("/exec", s.handleExec)
 	mux.HandleFunc("/processes", s.handleProcesses)
 	mux.HandleFunc("/processes/", s.handleProcess)
-	mux.Handle("/shell", websocket.Server{
-		Handler:   websocket.Handler(s.handleShell),
-		Handshake: acceptWebSocket,
-	})
+	mux.HandleFunc("/process.Process/List", s.handleConnectList)
+	mux.HandleFunc("/process.Process/Start", s.handleConnectStart)
+	mux.HandleFunc("/process.Process/Connect", s.handleConnectAttach)
+	mux.HandleFunc("/process.Process/Update", s.handleConnectUpdate)
+	mux.HandleFunc("/process.Process/SendInput", s.handleConnectSendInput)
+	mux.HandleFunc("/process.Process/SendSignal", s.handleConnectSendSignal)
 	s.httpServer = &http.Server{
 		Addr:              cfg.Boxd.Addr,
 		Handler:           mux,
@@ -93,9 +99,79 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"status":  "ok",
-		"service": "boxd",
+		"status":            "ok",
+		"service":           "boxd",
+		"updateMarker":      boxdUpdateMarker,
+		"startedAtUnixNano": s.startedAt.UnixNano(),
 	})
+}
+
+type reexecRequest struct {
+	Path        string   `json:"path"`
+	Args        []string `json:"args,omitempty"`
+	MountDevice string   `json:"mountDevice,omitempty"`
+	MountPath   string   `json:"mountPath,omitempty"`
+}
+
+func (s *Server) handleReexec(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	req := reexecRequest{}
+	if r.Body != nil {
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid reexec request body", http.StatusBadRequest)
+			return
+		}
+	}
+
+	targetPath := req.Path
+	if targetPath == "" {
+		targetPath = s.cfg.Template.BoxdGuestPath
+	}
+	if targetPath == "" {
+		http.Error(w, "path is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.MountDevice != "" && req.MountPath != "" {
+		if err := ensureReadonlyMount(req.MountDevice, req.MountPath, targetPath); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	if info, err := os.Stat(targetPath); err != nil {
+		http.Error(w, fmt.Sprintf("stat reexec target: %v", err), http.StatusInternalServerError)
+		return
+	} else if info.IsDir() {
+		http.Error(w, "reexec target is a directory", http.StatusBadRequest)
+		return
+	}
+
+	args := append([]string{targetPath}, req.Args...)
+	if len(req.Args) == 0 {
+		args = append([]string{targetPath}, os.Args[1:]...)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":            "reexecing",
+		"startedAtUnixNano": s.startedAt.UnixNano(),
+	})
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		if err := syscall.Exec(targetPath, args, os.Environ()); err != nil {
+			s.logger.Error("reexec boxd failed", "path", targetPath, "error", err)
+		}
+	}()
 }
 
 type execRequest struct {
@@ -159,50 +235,4 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
 	})
-}
-
-func (s *Server) handleShell(ws *websocket.Conn) {
-	shellPath := ws.Request().URL.Query().Get("cmd")
-	cols := parseUint16(ws.Request().URL.Query().Get("cols"), 80)
-	rows := parseUint16(ws.Request().URL.Query().Get("rows"), 24)
-
-	cmd, terminal, err := startShellProcess(shellPath, cols, rows)
-	if err != nil {
-		s.logger.Error("start shell failed", "error", err)
-		_ = websocket.Message.Send(ws, []byte(err.Error()))
-		wsutil.CloseWebSocket(ws)
-		return
-	}
-	defer func() {
-		_ = terminal.Close()
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-		wsutil.CloseWebSocket(ws)
-	}()
-
-	errCh := make(chan error, 2)
-	go func() {
-		errCh <- wsutil.CopyWebSocketToWriter(terminal, ws)
-	}()
-	go func() {
-		errCh <- wsutil.CopyReaderToWebSocket(ws, terminal)
-	}()
-
-	err = <-errCh
-	if err != nil && !errors.Is(err, io.EOF) {
-		s.logger.Warn("shell stream closed with error", "error", err)
-	}
-}
-
-func parseUint16(raw string, fallback uint16) uint16 {
-	if raw == "" {
-		return fallback
-	}
-	value, err := strconv.ParseUint(raw, 10, 16)
-	if err != nil || value == 0 {
-		return fallback
-	}
-	return uint16(value)
 }

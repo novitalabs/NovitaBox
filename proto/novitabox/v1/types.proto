@@ -97,6 +97,13 @@ message RootfsSpec {
   string format = 3;
 }
 
+message DriveSpec {
+  string drive_id = 1;
+  string path = 2;
+  bool readonly = 3;
+  string format = 4;
+}
+
 message SnapshotSpec {
   string memfile_path = 1;
   string snapfile_path = 2;
@@ -138,6 +145,7 @@ message RuntimeSpec {
   NetworkSpec network = 7;
   AgentSpec agent = 8;
   JailerSpec jailer = 9;
+  repeated DriveSpec extra_drives = 10;
   map<string, string> labels = 20;
   map<string, string> annotations = 21;
 }

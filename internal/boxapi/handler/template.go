@@ -110,8 +110,9 @@ type teamUserResponse struct {
 }
 
 const (
-	defaultTemplateCPUCount = int32(1)
-	defaultTemplateMemoryMB = int32(512)
+	defaultTemplateCPUCount   = int32(1)
+	defaultTemplateMemoryMB   = int32(512)
+	defaultSandboxEnvdVersion = "0.1.0"
 )
 
 type convertTemplateRequest struct {

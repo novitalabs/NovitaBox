@@ -890,8 +890,6 @@ type CreateImageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ImageId       string                 `protobuf:"bytes,1,opt,name=image_id,json=imageId,proto3" json:"image_id,omitempty"`
 	TemplateId    string                 `protobuf:"bytes,2,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
-	SandboxId     string                 `protobuf:"bytes,3,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
-	DockerImage   string                 `protobuf:"bytes,4,opt,name=docker_image,json=dockerImage,proto3" json:"docker_image,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,20,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -937,20 +935,6 @@ func (x *CreateImageRequest) GetImageId() string {
 func (x *CreateImageRequest) GetTemplateId() string {
 	if x != nil {
 		return x.TemplateId
-	}
-	return ""
-}
-
-func (x *CreateImageRequest) GetSandboxId() string {
-	if x != nil {
-		return x.SandboxId
-	}
-	return ""
-}
-
-func (x *CreateImageRequest) GetDockerImage() string {
-	if x != nil {
-		return x.DockerImage
 	}
 	return ""
 }
@@ -1507,14 +1491,11 @@ const file_novitabox_v1_boxlet_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"Q\n" +
 	"\x15ListTemplatesResponse\x128\n" +
-	"\ttemplates\x18\x01 \x03(\v2\x1a.novitabox.v1.TemplateInfoR\ttemplates\"\x93\x02\n" +
+	"\ttemplates\x18\x01 \x03(\v2\x1a.novitabox.v1.TemplateInfoR\ttemplates\"\xd1\x01\n" +
 	"\x12CreateImageRequest\x12\x19\n" +
 	"\bimage_id\x18\x01 \x01(\tR\aimageId\x12\x1f\n" +
 	"\vtemplate_id\x18\x02 \x01(\tR\n" +
-	"templateId\x12\x1d\n" +
-	"\n" +
-	"sandbox_id\x18\x03 \x01(\tR\tsandboxId\x12!\n" +
-	"\fdocker_image\x18\x04 \x01(\tR\vdockerImage\x12D\n" +
+	"templateId\x12D\n" +
 	"\x06labels\x18\x14 \x03(\v2,.novitabox.v1.CreateImageRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
