@@ -104,6 +104,28 @@ type compatibleTemplateBuildResponse struct {
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
+type templateBuildInfoResponse struct {
+	BuildID    string          `json:"buildID"`
+	LogEntries []buildLogEntry `json:"logEntries"`
+	Logs       []string        `json:"logs"`
+	Status     string          `json:"status"`
+	TemplateID string          `json:"templateID"`
+	Reason     *buildReason    `json:"reason,omitempty"`
+}
+
+type buildLogEntry struct {
+	Level     string    `json:"level"`
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp"`
+	Step      string    `json:"step,omitempty"`
+}
+
+type buildReason struct {
+	Message    string          `json:"message"`
+	LogEntries []buildLogEntry `json:"logEntries,omitempty"`
+	Step       string          `json:"step,omitempty"`
+}
+
 type teamUserResponse struct {
 	Email string `json:"email,omitempty"`
 	ID    string `json:"id,omitempty"`
@@ -290,6 +312,33 @@ func (h *Handler) StartTemplateBuildV2(c *gin.Context) {
 	}
 
 	c.Status(http.StatusAccepted)
+}
+
+func (h *Handler) GetTemplateBuildStatus(c *gin.Context) {
+	if h.store == nil {
+		response.Error(c, response.ErrInternal("storage is not configured"))
+		return
+	}
+
+	templateID := c.Param("template_id")
+	buildID := c.Param("build_id")
+	if templateID == "" || buildID == "" {
+		response.Error(c, response.ErrBadRequest("templateID and buildID are required"))
+		return
+	}
+
+	record, err := h.store.GetTemplateBuild(c.Request.Context(), templateID, buildID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			response.Error(c, response.ErrNotFound("template build not found"))
+			return
+		}
+		h.logger.Error("load template build status failed", "template_id", templateID, "build_id", buildID, "error", err)
+		response.Error(c, response.ErrInternal("load template build status failed"))
+		return
+	}
+
+	response.JSON(c, http.StatusOK, templateBuildInfoFromRecord(*record))
 }
 
 func templateBuildRequestToProto(templateID string, req startTemplateBuildV2Request) *novitaboxv1.CreateTemplateRequest {
@@ -627,6 +676,20 @@ func templateProtoListToCompatibleResponse(infos []*novitaboxv1.TemplateInfo) []
 		templates = append(templates, templateProtoToCompatibleResponse(info))
 	}
 	return templates
+}
+
+func templateBuildInfoFromRecord(record store.TemplateBuildRecord) templateBuildInfoResponse {
+	out := templateBuildInfoResponse{
+		BuildID:    record.ID,
+		LogEntries: []buildLogEntry{},
+		Logs:       []string{},
+		Status:     string(record.Status),
+		TemplateID: record.TemplateID,
+	}
+	if record.Status == store.TemplateBuildStatusError {
+		out.Reason = &buildReason{Message: "template build failed"}
+	}
+	return out
 }
 
 func templateBuildRecordsToCompatibleResponse(records []store.TemplateBuildRecord, diskSizeMB int64, cpuCount int32, memoryMB int32) []compatibleTemplateBuildResponse {

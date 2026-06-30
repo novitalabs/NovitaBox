@@ -1112,19 +1112,32 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 			SnapshotType: "full",
 		},
 	}
+	networkSpec, err := newSandboxNetworkManager(s.cfg).Spec(buildID)
+	if err != nil {
+		return fmt.Errorf("prepare template build network spec: %w", err)
+	}
+	spec.Network = networkSpec
 	if err := s.attachAgentDrive(ctx, spec); err != nil {
 		return err
+	}
+	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
+		return fmt.Errorf("prepare template build network: %w", err)
 	}
 
 	if _, err := shim.CreateRuntime(ctx, &novitaboxv1.CreateRuntimeRequest{RuntimeSpec: spec}); err != nil {
 		return fmt.Errorf("create template build runtime: %w", err)
 	}
 
-	if err := s.waitTemplateRuntimeReady(ctx); err != nil {
+	agentURL, err := templateBuildAgentURL(s.cfg, buildID, spec.GetNetwork())
+	if err != nil {
 		_, _ = shim.KillRuntime(context.Background(), &novitaboxv1.KillRuntimeRequest{SandboxId: buildID})
 		return err
 	}
-	if err := s.runTemplateBuildCommands(ctx, req); err != nil {
+	if err := s.waitTemplateRuntimeReady(ctx, agentURL.health); err != nil {
+		_, _ = shim.KillRuntime(context.Background(), &novitaboxv1.KillRuntimeRequest{SandboxId: buildID})
+		return err
+	}
+	if err := s.runTemplateBuildCommands(ctx, req, agentURL.exec); err != nil {
 		_, _ = shim.KillRuntime(context.Background(), &novitaboxv1.KillRuntimeRequest{SandboxId: buildID})
 		return err
 	}
@@ -1154,9 +1167,49 @@ func templateKernelArgs(configured []string) []string {
 	}
 }
 
-func (s *artifactService) waitTemplateRuntimeReady(ctx context.Context) error {
-	if s.cfg.Template.AgentHealthURL != "" {
-		return waitHTTPHealth(ctx, s.cfg.Template.AgentHealthURL, time.Duration(s.cfg.Template.AgentWaitSecs)*time.Second)
+type templateBuildAgentURLs struct {
+	health string
+	exec   string
+}
+
+func templateBuildAgentURL(cfg config.Config, buildID string, networkSpec *novitaboxv1.NetworkSpec) (templateBuildAgentURLs, error) {
+	if cfg.Template.AgentHealthURL != "" || cfg.Template.AgentExecURL != "" {
+		return templateBuildAgentURLs{
+			health: cfg.Template.AgentHealthURL,
+			exec:   cfg.Template.AgentExecURL,
+		}, nil
+	}
+	if !cfg.Network.Enabled {
+		return templateBuildAgentURLs{}, nil
+	}
+	hostIP := ""
+	if networkSpec != nil {
+		hostIP = networkSpec.GetHostAccessIp()
+	}
+	if hostIP == "" {
+		spec, err := newSandboxNetworkManager(cfg).Spec(buildID)
+		if err != nil {
+			return templateBuildAgentURLs{}, err
+		}
+		hostIP = spec.GetHostAccessIp()
+	}
+	if hostIP == "" {
+		return templateBuildAgentURLs{}, errors.New("template build agent host access ip is empty")
+	}
+	_, port, err := net.SplitHostPort(cfg.Boxd.Addr)
+	if err != nil {
+		return templateBuildAgentURLs{}, fmt.Errorf("parse boxd address %q: %w", cfg.Boxd.Addr, err)
+	}
+	baseURL := "http://" + net.JoinHostPort(hostIP, port)
+	return templateBuildAgentURLs{
+		health: baseURL + "/healthz",
+		exec:   baseURL + "/exec",
+	}, nil
+}
+
+func (s *artifactService) waitTemplateRuntimeReady(ctx context.Context, healthURL string) error {
+	if healthURL != "" {
+		return waitHTTPHealth(ctx, healthURL, time.Duration(s.cfg.Template.AgentWaitSecs)*time.Second)
 	}
 
 	wait := time.Duration(s.cfg.Template.SnapshotWaitSecs) * time.Second
@@ -1175,37 +1228,55 @@ func (s *artifactService) waitTemplateRuntimeReady(ctx context.Context) error {
 	}
 }
 
-func (s *artifactService) runTemplateBuildCommands(ctx context.Context, req *novitaboxv1.CreateTemplateRequest) error {
+func (s *artifactService) runTemplateBuildCommands(ctx context.Context, req *novitaboxv1.CreateTemplateRequest, execURL string) error {
 	if req.GetStartCmd() == "" && req.GetReadyCmd() == "" && len(req.GetSteps()) == 0 {
 		return nil
 	}
-	if s.cfg.Template.AgentExecURL == "" {
+	if execURL == "" {
 		return errors.New("template build commands require --template-agent-exec")
 	}
 
 	if req.GetStartCmd() != "" {
-		if err := execTemplateCommand(ctx, s.cfg.Template.AgentExecURL, []string{"/bin/sh", "-c", req.GetStartCmd()}, nil); err != nil {
+		if err := execTemplateCommand(ctx, execURL, []string{"/bin/sh", "-c", req.GetStartCmd()}, nil); err != nil {
 			return fmt.Errorf("run template start_cmd: %w", err)
 		}
 	}
 	for i, step := range req.GetSteps() {
-		if step.GetType() != "exec" {
+		if !isExecutableTemplateBuildStepType(step.GetType()) {
 			return fmt.Errorf("unsupported template build step %d type %q", i, step.GetType())
 		}
 		if len(step.GetArgs()) == 0 {
 			return fmt.Errorf("template build step %d args are required", i)
 		}
-		if err := execTemplateCommand(ctx, s.cfg.Template.AgentExecURL, step.GetArgs(), step.GetEnvVars()); err != nil {
+		cmd := templateBuildStepCommand(step)
+		if err := execTemplateCommand(ctx, execURL, cmd, step.GetEnvVars()); err != nil {
 			return fmt.Errorf("run template build step %d: %w", i, err)
 		}
 	}
 	if req.GetReadyCmd() != "" {
-		if err := execTemplateCommand(ctx, s.cfg.Template.AgentExecURL, []string{"/bin/sh", "-c", req.GetReadyCmd()}, nil); err != nil {
+		if err := execTemplateCommand(ctx, execURL, []string{"/bin/sh", "-c", req.GetReadyCmd()}, nil); err != nil {
 			return fmt.Errorf("run template ready_cmd: %w", err)
 		}
 	}
 
 	return nil
+}
+
+func isExecutableTemplateBuildStepType(stepType string) bool {
+	switch strings.ToLower(stepType) {
+	case "exec", "run":
+		return true
+	default:
+		return false
+	}
+}
+
+func templateBuildStepCommand(step *novitaboxv1.TemplateBuildStep) []string {
+	args := step.GetArgs()
+	if strings.EqualFold(step.GetType(), "run") && len(args) == 1 {
+		return []string{"/bin/sh", "-c", args[0]}
+	}
+	return args
 }
 
 func execTemplateCommand(ctx context.Context, url string, cmd []string, envVars map[string]string) error {

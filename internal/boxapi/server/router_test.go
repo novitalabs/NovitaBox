@@ -265,6 +265,7 @@ func TestRouterLegacyTemplateCreateNotRegistered(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, rec.Code, rec.Body.String())
 	}
+	assertCompatibleErrorResponse(t, rec.Body.Bytes(), "not_found")
 }
 
 func TestRouterCreateSandbox(t *testing.T) {
@@ -535,6 +536,33 @@ func TestRouterStartTemplateBuildV2(t *testing.T) {
 
 	if startRec.Code != http.StatusAccepted {
 		t.Fatalf("start expected status %d, got %d body=%s", http.StatusAccepted, startRec.Code, startRec.Body.String())
+	}
+
+	statusReq := httptest.NewRequest(
+		http.MethodGet,
+		"/templates/"+created.TemplateID+"/builds/"+created.BuildID+"/status?logsOffset=0&limit=100",
+		nil,
+	)
+	statusRec := httptest.NewRecorder()
+	s.router().ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("status expected status %d, got %d body=%s", http.StatusOK, statusRec.Code, statusRec.Body.String())
+	}
+	var statusGot struct {
+		BuildID    string   `json:"buildID"`
+		TemplateID string   `json:"templateID"`
+		Status     string   `json:"status"`
+		LogEntries []any    `json:"logEntries"`
+		Logs       []string `json:"logs"`
+	}
+	if err := json.Unmarshal(statusRec.Body.Bytes(), &statusGot); err != nil {
+		t.Fatalf("decode status response: %v body=%s", err, statusRec.Body.String())
+	}
+	if statusGot.BuildID != created.BuildID || statusGot.TemplateID != created.TemplateID || statusGot.Status != "ready" {
+		t.Fatalf("status response = %#v, want ready build", statusGot)
+	}
+	if statusGot.LogEntries == nil || statusGot.Logs == nil {
+		t.Fatalf("status response should include empty logEntries/logs arrays: %#v", statusGot)
 	}
 }
 
@@ -832,6 +860,26 @@ func TestRouterCreateTemplateV3RequiresName(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+	assertCompatibleErrorResponse(t, rec.Body.Bytes(), "bad_request")
+}
+
+func assertCompatibleErrorResponse(t *testing.T, body []byte, wantCode string) {
+	t.Helper()
+
+	var got struct {
+		Code    string          `json:"code"`
+		Message string          `json:"message"`
+		Error   json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("decode error response: %v body=%s", err, string(body))
+	}
+	if got.Code != wantCode || got.Message == "" {
+		t.Fatalf("error response = %#v, want code=%q with message", got, wantCode)
+	}
+	if len(got.Error) != 0 {
+		t.Fatalf("error response should not use nested error body: %s", string(body))
 	}
 }
 

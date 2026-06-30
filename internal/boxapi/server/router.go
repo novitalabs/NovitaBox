@@ -42,6 +42,7 @@ func registerCompatibleRoutes(r *gin.Engine, h *handler.Handler) {
 		templateRoutes.GET("", h.ListTemplates)
 		templateRoutes.GET("/:template_id", h.GetTemplate)
 		templateRoutes.DELETE("/:template_id", h.DeleteTemplate)
+		templateRoutes.GET("/:template_id/builds/:build_id/status", h.GetTemplateBuildStatus)
 	}
 
 	sandboxRoutes := r.Group("/sandboxes")
@@ -105,6 +106,7 @@ func registerV2Routes(r *gin.Engine, h *handler.Handler) {
 	{
 		v2.GET("/sandboxes", h.ListSandboxesV2)
 		v2.POST("/templates/:template_id/builds/:build_id", h.StartTemplateBuildV2)
+		v2.GET("/templates/:template_id/builds/:build_id/status", h.GetTemplateBuildStatus)
 	}
 }
 
