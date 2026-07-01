@@ -40,15 +40,26 @@ func TestRouterHealth(t *testing.T) {
 	}
 }
 
-func TestRouterNotImplemented(t *testing.T) {
+func TestRouterListRuntimes(t *testing.T) {
 	s := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/v1/runtimes", nil)
 	rec := httptest.NewRecorder()
 
 	s.router().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected status %d, got %d", http.StatusNotImplemented, rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Runtimes []struct {
+			RuntimeType string `json:"runtimeType"`
+		} `json:"runtimes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got.Runtimes) == 0 || got.Runtimes[0].RuntimeType != "firecracker" {
+		t.Fatalf("runtimes = %#v, want firecracker first", got.Runtimes)
 	}
 }
 
@@ -718,7 +729,7 @@ func TestRouterTemplateCRUD(t *testing.T) {
 	}
 }
 
-func TestRouterV1TemplateRoutesNotRegistered(t *testing.T) {
+func TestRouterV1TemplateRoutes(t *testing.T) {
 	s := newTestServer(t)
 
 	for _, tc := range []struct {
@@ -728,7 +739,6 @@ func TestRouterV1TemplateRoutesNotRegistered(t *testing.T) {
 		{method: http.MethodGet, path: "/v1/templates"},
 		{method: http.MethodGet, path: "/v1/templates/tpl-test"},
 		{method: http.MethodDelete, path: "/v1/templates/tpl-test"},
-		{method: http.MethodPost, path: "/v1/templates/convert"},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, nil)
 		rec := httptest.NewRecorder()
@@ -738,6 +748,14 @@ func TestRouterV1TemplateRoutesNotRegistered(t *testing.T) {
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("%s %s expected status %d, got %d body=%s", tc.method, tc.path, http.StatusNotFound, rec.Code, rec.Body.String())
 		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/templates/convert", nil)
+	rec := httptest.NewRecorder()
+	s.router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("POST /v1/templates/convert expected status %d, got %d body=%s", http.StatusBadRequest, rec.Code, rec.Body.String())
 	}
 }
 
