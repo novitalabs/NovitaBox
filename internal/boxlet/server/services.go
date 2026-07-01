@@ -69,35 +69,46 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 		ImageID:     req.GetImageId(),
 		SnapshotID:  req.GetSnapshotId(),
 	}
-	spec := s.completeRuntimeSpec(record, req.GetRuntimeSpec())
 	if err := s.store.CreateSandbox(ctx, record); err != nil {
 		if isAlreadyExistsError(err) {
 			return nil, status.Error(codes.AlreadyExists, "sandbox already exists")
 		}
 		return nil, err
 	}
+	slot, err := s.assignSandboxNetworkSlot(ctx, record.ID)
+	if err != nil {
+		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		return nil, err
+	}
+	record.NetworkSlot = slot
+	spec := s.completeRuntimeSpec(record, req.GetRuntimeSpec())
 	if err := s.prepareSandboxRuntimeFiles(ctx, record, spec); err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		_ = s.releaseSandboxNetwork(ctx, record)
 		return nil, err
 	}
 	if err := ensureSnapshotSpecDirs(spec.Snapshot); err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		_ = s.releaseSandboxNetwork(ctx, record)
 		return nil, err
 	}
 	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		_ = s.releaseSandboxNetwork(ctx, record)
 		return nil, err
 	}
 
 	shimSocket := filepath.Join(sandboxDir, "shim.sock")
 	if err := ensureShim(ctx, s.cfg, shimSocket); err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		_ = s.releaseSandboxNetwork(ctx, record)
 		return nil, err
 	}
 
 	shim, closeShim, err := dialShim(ctx, shimSocket)
 	if err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		_ = s.releaseSandboxNetwork(ctx, record)
 		return nil, err
 	}
 	defer closeShim()
@@ -105,11 +116,13 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 	runtimeInfo, err := shim.CreateRuntime(ctx, &novitaboxv1.CreateRuntimeRequest{RuntimeSpec: spec})
 	if err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		_ = s.releaseSandboxNetwork(ctx, record)
 		return nil, fmt.Errorf("create runtime: %w", err)
 	}
 	if err := s.ensureSandboxAgentCurrent(ctx, record.ID, spec.GetNetwork()); err != nil {
 		_, _ = shim.KillRuntime(context.Background(), &novitaboxv1.KillRuntimeRequest{SandboxId: record.ID})
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
+		_ = s.releaseSandboxNetwork(ctx, record)
 		return nil, fmt.Errorf("refresh sandbox agent: %w", err)
 	}
 
@@ -191,6 +204,9 @@ func (s *sandboxService) PauseSandbox(ctx context.Context, req *novitaboxv1.Paus
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StatePaused, "pause"); err != nil {
 		return nil, err
 	}
+	if err := s.releaseSandboxNetwork(ctx, *record); err != nil {
+		return nil, err
+	}
 
 	return snapshotRecordToProto(snapshot), nil
 }
@@ -206,10 +222,17 @@ func (s *sandboxService) ResumeSandbox(ctx context.Context, req *novitaboxv1.Res
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateResuming, "resume"); err != nil {
 		return nil, err
 	}
+	slot, err := s.assignSandboxNetworkSlot(ctx, record.ID)
+	if err != nil {
+		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		return nil, err
+	}
+	record.NetworkSlot = slot
 
 	shim, closeShim, err := s.dialSandboxShim(ctx, record.ID)
 	if err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, err
 	}
 	defer closeShim()
@@ -217,18 +240,22 @@ func (s *sandboxService) ResumeSandbox(ctx context.Context, req *novitaboxv1.Res
 	spec := s.runtimeSpecForSandbox(*record)
 	if err := s.attachAgentDrive(ctx, spec); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, err
 	}
 	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, err
 	}
 	if _, err := shim.ResumeRuntime(ctx, &novitaboxv1.ResumeRuntimeRequest{RuntimeSpec: spec}); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, fmt.Errorf("resume runtime: %w", err)
 	}
 	if err := s.ensureSandboxAgentCurrent(ctx, record.ID, spec.GetNetwork()); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "resume")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, fmt.Errorf("refresh sandbox agent: %w", err)
 	}
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateRunning, "resume"); err != nil {
@@ -275,7 +302,7 @@ func (s *sandboxService) KillSandbox(ctx context.Context, req *novitaboxv1.KillS
 	if err := os.RemoveAll(sandboxDir); err != nil {
 		return nil, fmt.Errorf("remove sandbox directory: %w", err)
 	}
-	if err := newSandboxNetworkManager(s.cfg).Cleanup(ctx, record.ID); err != nil {
+	if err := s.releaseSandboxNetwork(ctx, *record); err != nil {
 		s.logger.Warn("cleanup sandbox network failed", "sandbox_id", record.ID, "error", err)
 	}
 
@@ -314,10 +341,17 @@ func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.Star
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateStarting, "start"); err != nil {
 		return nil, err
 	}
+	slot, err := s.assignSandboxNetworkSlot(ctx, record.ID)
+	if err != nil {
+		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		return nil, err
+	}
+	record.NetworkSlot = slot
 
 	shim, closeShim, err := s.dialSandboxShim(ctx, record.ID)
 	if err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, err
 	}
 	defer closeShim()
@@ -325,18 +359,22 @@ func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.Star
 	spec := s.runtimeSpecForSandbox(*record)
 	if err := s.attachAgentDrive(ctx, spec); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, err
 	}
 	if err := newSandboxNetworkManager(s.cfg).Ensure(ctx, spec.GetNetwork()); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, err
 	}
 	if _, err := shim.StartRuntime(ctx, &novitaboxv1.StartRuntimeRequest{RuntimeSpec: spec}); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, fmt.Errorf("start runtime: %w", err)
 	}
 	if err := s.ensureSandboxAgentCurrent(ctx, record.ID, spec.GetNetwork()); err != nil {
 		_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+		_ = s.releaseSandboxNetwork(ctx, *record)
 		return nil, fmt.Errorf("refresh sandbox agent: %w", err)
 	}
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateRunning, "start"); err != nil {
@@ -384,6 +422,11 @@ func (s *sandboxService) runtimeAction(ctx context.Context, sandboxID string, tr
 	if err := s.setSandboxState(ctx, record.ID, finalState, action); err != nil {
 		return nil, err
 	}
+	if finalState == sandbox.StateStopped || finalState == sandbox.StatePaused || finalState == sandbox.StateKilled {
+		if err := s.releaseSandboxNetwork(ctx, *record); err != nil {
+			return nil, err
+		}
+	}
 
 	updated, err := s.store.GetSandbox(ctx, record.ID)
 	if err != nil {
@@ -413,6 +456,33 @@ func (s *sandboxService) setSandboxState(ctx context.Context, sandboxID string, 
 		if errors.Is(err, store.ErrNotFound) {
 			return status.Error(codes.NotFound, "sandbox not found")
 		}
+		return err
+	}
+	return nil
+}
+
+func (s *sandboxService) assignSandboxNetworkSlot(ctx context.Context, sandboxID string) (uint32, error) {
+	if !s.cfg.Network.Enabled {
+		return 0, nil
+	}
+	manager := newSandboxNetworkManager(s.cfg)
+	maxSlot, err := manager.MaxSlots()
+	if err != nil {
+		return 0, err
+	}
+	return s.store.AssignSandboxNetworkSlot(ctx, sandboxID, maxSlot)
+}
+
+func (s *sandboxService) releaseSandboxNetwork(ctx context.Context, record store.SandboxRecord) error {
+	if !s.cfg.Network.Enabled {
+		return nil
+	}
+	if record.NetworkSlot > 0 {
+		if err := newSandboxNetworkManager(s.cfg).Cleanup(ctx, record.ID, record.NetworkSlot); err != nil {
+			return err
+		}
+	}
+	if err := s.store.ReleaseSandboxNetworkSlot(ctx, record.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
 	return nil
@@ -532,7 +602,10 @@ func isAlreadyExistsError(err error) bool {
 
 func (s *sandboxService) runtimeSpecForSandbox(record store.SandboxRecord) *novitaboxv1.RuntimeSpec {
 	paths := sandboxRuntimePaths(s.cfg.RootDir, record.ID)
-	networkSpec, _ := newSandboxNetworkManager(s.cfg).Spec(record.ID)
+	var networkSpec *novitaboxv1.NetworkSpec
+	if record.NetworkSlot > 0 {
+		networkSpec, _ = newSandboxNetworkManager(s.cfg).SpecForSlot(record.ID, record.NetworkSlot)
+	}
 	return &novitaboxv1.RuntimeSpec{
 		SandboxId:   record.ID,
 		RuntimeType: runtimeTypeFromRecord(record.RuntimeType),
@@ -601,8 +674,10 @@ func (s *sandboxService) completeRuntimeSpec(record store.SandboxRecord, spec *n
 	if spec.Snapshot.SnapfilePath == "" {
 		spec.Snapshot.SnapfilePath = paths.SnapfilePath
 	}
-	if networkSpec, err := newSandboxNetworkManager(s.cfg).Complete(record.ID, spec.Network); err == nil {
-		spec.Network = networkSpec
+	if record.NetworkSlot > 0 {
+		if networkSpec, err := newSandboxNetworkManager(s.cfg).Complete(record.ID, record.NetworkSlot, spec.Network); err == nil {
+			spec.Network = networkSpec
+		}
 	}
 	if spec.Agent == nil {
 		spec.Agent = &novitaboxv1.AgentSpec{
@@ -1068,6 +1143,7 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 
 	buildID := "template-build-" + templateID
 	buildDir := filepath.Join(layout.New(s.cfg.RootDir).SandboxDir(buildID))
+	var internalNetworkSlot uint32
 	if err := os.RemoveAll(buildDir); err != nil {
 		return fmt.Errorf("remove stale template build sandbox: %w", err)
 	}
@@ -1075,7 +1151,7 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 		return fmt.Errorf("create template snapshot build dir: %w", err)
 	}
 	defer func() {
-		if err := cleanupInternalSandbox(context.Background(), s.cfg, buildID); err != nil {
+		if err := cleanupInternalSandbox(context.Background(), s.cfg, buildID, internalNetworkSlot); err != nil {
 			s.logger.Warn("cleanup template build sandbox failed", "sandbox_id", buildID, "error", err)
 		}
 	}()
@@ -1112,9 +1188,12 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 			SnapshotType: "full",
 		},
 	}
-	networkSpec, err := newSandboxNetworkManager(s.cfg).Spec(buildID)
+	networkSpec, err := s.internalSandboxNetworkSpec(ctx, buildID)
 	if err != nil {
 		return fmt.Errorf("prepare template build network spec: %w", err)
+	}
+	if networkSpec != nil {
+		internalNetworkSlot = networkSpec.GetSlot()
 	}
 	spec.Network = networkSpec
 	if err := s.attachAgentDrive(ctx, spec); err != nil {
@@ -1148,6 +1227,35 @@ func (s *artifactService) createTemplateSnapshot(ctx context.Context, req *novit
 	}
 
 	return nil
+}
+
+func (s *artifactService) internalSandboxNetworkSpec(ctx context.Context, sandboxID string) (*novitaboxv1.NetworkSpec, error) {
+	manager := newSandboxNetworkManager(s.cfg)
+	if !s.cfg.Network.Enabled {
+		return nil, nil
+	}
+	maxSlot, err := manager.MaxSlots()
+	if err != nil {
+		return nil, err
+	}
+	used := map[uint32]struct{}{}
+	if s.store != nil {
+		records, err := s.store.ListSandboxes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, record := range records {
+			if record.NetworkSlot > 0 {
+				used[record.NetworkSlot] = struct{}{}
+			}
+		}
+	}
+	for slot := maxSlot; slot > 0; slot-- {
+		if _, ok := used[slot]; !ok {
+			return manager.SpecForSlot(sandboxID, slot)
+		}
+	}
+	return nil, fmt.Errorf("no internal sandbox network slots available")
 }
 
 func templateKernelArgs(configured []string) []string {
@@ -1187,14 +1295,7 @@ func templateBuildAgentURL(cfg config.Config, buildID string, networkSpec *novit
 		hostIP = networkSpec.GetHostAccessIp()
 	}
 	if hostIP == "" {
-		spec, err := newSandboxNetworkManager(cfg).Spec(buildID)
-		if err != nil {
-			return templateBuildAgentURLs{}, err
-		}
-		hostIP = spec.GetHostAccessIp()
-	}
-	if hostIP == "" {
-		return templateBuildAgentURLs{}, errors.New("template build agent host access ip is empty")
+		return templateBuildAgentURLs{}, fmt.Errorf("template build %q agent host access ip is empty", buildID)
 	}
 	_, port, err := net.SplitHostPort(cfg.Boxd.Addr)
 	if err != nil {
@@ -1577,6 +1678,7 @@ func (s *artifactService) exportTemplateImageRootfs(ctx context.Context, templat
 	l := layout.New(s.cfg.RootDir)
 	buildDir := l.SandboxDir(buildID)
 	paths := sandboxRuntimePaths(s.cfg.RootDir, buildID)
+	var internalNetworkSlot uint32
 
 	if err := os.RemoveAll(buildDir); err != nil {
 		return fmt.Errorf("remove stale image build sandbox: %w", err)
@@ -1585,7 +1687,7 @@ func (s *artifactService) exportTemplateImageRootfs(ctx context.Context, templat
 		return fmt.Errorf("create image build snapshot directory: %w", err)
 	}
 	defer func() {
-		if err := cleanupInternalSandbox(context.Background(), s.cfg, buildID); err != nil {
+		if err := cleanupInternalSandbox(context.Background(), s.cfg, buildID, internalNetworkSlot); err != nil {
 			s.logger.Warn("cleanup image build sandbox failed", "sandbox_id", buildID, "error", err)
 		}
 	}()
@@ -1613,7 +1715,14 @@ func (s *artifactService) exportTemplateImageRootfs(ctx context.Context, templat
 	}
 	defer closeShim()
 
-	spec := s.imageBuildRuntimeSpec(buildID, template.RootfsPath, paths)
+	networkSpec, err := s.internalSandboxNetworkSpec(ctx, buildID)
+	if err != nil {
+		return fmt.Errorf("prepare image build network spec: %w", err)
+	}
+	if networkSpec != nil {
+		internalNetworkSlot = networkSpec.GetSlot()
+	}
+	spec := s.imageBuildRuntimeSpec(buildID, template.RootfsPath, paths, networkSpec)
 	if err := s.attachAgentDrive(ctx, spec); err != nil {
 		return err
 	}
@@ -1641,9 +1750,8 @@ func (s *artifactService) exportTemplateImageRootfs(ctx context.Context, templat
 	})
 }
 
-func (s *artifactService) imageBuildRuntimeSpec(sandboxID string, rootfsPath string, paths sandboxRuntimeArtifactPaths) *novitaboxv1.RuntimeSpec {
+func (s *artifactService) imageBuildRuntimeSpec(sandboxID string, rootfsPath string, paths sandboxRuntimeArtifactPaths, networkSpec *novitaboxv1.NetworkSpec) *novitaboxv1.RuntimeSpec {
 	runtimeType := runtimeTypeFromRecord(s.cfg.Boxshim.RuntimeDriver)
-	networkSpec, _ := newSandboxNetworkManager(s.cfg).Spec(sandboxID)
 	spec := &novitaboxv1.RuntimeSpec{
 		SandboxId:   sandboxID,
 		RuntimeType: runtimeType,
@@ -1812,7 +1920,7 @@ func restoreTemplateRootfs(rootfsPath string, backupPath string) error {
 	return nil
 }
 
-func cleanupInternalSandbox(ctx context.Context, cfg config.Config, sandboxID string) error {
+func cleanupInternalSandbox(ctx context.Context, cfg config.Config, sandboxID string, networkSlot uint32) error {
 	sandboxDir := layout.New(cfg.RootDir).SandboxDir(sandboxID)
 	shimSocket := filepath.Join(sandboxDir, "shim.sock")
 	if shim, closeShim, err := dialShim(ctx, shimSocket); err == nil {
@@ -1822,8 +1930,10 @@ func cleanupInternalSandbox(ctx context.Context, cfg config.Config, sandboxID st
 	if err := terminateShimProcess(sandboxDir, 5*time.Second); err != nil {
 		return err
 	}
-	if err := newSandboxNetworkManager(cfg).Cleanup(ctx, sandboxID); err != nil {
-		return err
+	if networkSlot > 0 {
+		if err := newSandboxNetworkManager(cfg).Cleanup(ctx, sandboxID, networkSlot); err != nil {
+			return err
+		}
 	}
 	return os.RemoveAll(sandboxDir)
 }

@@ -903,6 +903,7 @@ type NetworkSpec struct {
 	GatewayIp     string                 `protobuf:"bytes,4,opt,name=gateway_ip,json=gatewayIp,proto3" json:"gateway_ip,omitempty"`
 	HostAccessIp  string                 `protobuf:"bytes,5,opt,name=host_access_ip,json=hostAccessIp,proto3" json:"host_access_ip,omitempty"`
 	Mac           string                 `protobuf:"bytes,6,opt,name=mac,proto3" json:"mac,omitempty"`
+	Slot          uint32                 `protobuf:"varint,7,opt,name=slot,proto3" json:"slot,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -977,6 +978,13 @@ func (x *NetworkSpec) GetMac() string {
 		return x.Mac
 	}
 	return ""
+}
+
+func (x *NetworkSpec) GetSlot() uint32 {
+	if x != nil {
+		return x.Slot
+	}
+	return 0
 }
 
 type AgentSpec struct {
@@ -1612,7 +1620,7 @@ const file_novitabox_v1_types_proto_rawDesc = "" +
 	"\fSnapshotSpec\x12!\n" +
 	"\fmemfile_path\x18\x01 \x01(\tR\vmemfilePath\x12#\n" +
 	"\rsnapfile_path\x18\x02 \x01(\tR\fsnapfilePath\x12#\n" +
-	"\rsnapshot_type\x18\x03 \x01(\tR\fsnapshotType\"\xc1\x01\n" +
+	"\rsnapshot_type\x18\x03 \x01(\tR\fsnapshotType\"\xd5\x01\n" +
 	"\vNetworkSpec\x12%\n" +
 	"\x0enamespace_name\x18\x01 \x01(\tR\rnamespaceName\x12\x19\n" +
 	"\btap_name\x18\x02 \x01(\tR\atapName\x12\x19\n" +
@@ -1620,7 +1628,8 @@ const file_novitabox_v1_types_proto_rawDesc = "" +
 	"\n" +
 	"gateway_ip\x18\x04 \x01(\tR\tgatewayIp\x12$\n" +
 	"\x0ehost_access_ip\x18\x05 \x01(\tR\fhostAccessIp\x12\x10\n" +
-	"\x03mac\x18\x06 \x01(\tR\x03mac\"e\n" +
+	"\x03mac\x18\x06 \x01(\tR\x03mac\x12\x12\n" +
+	"\x04slot\x18\a \x01(\rR\x04slot\"e\n" +
 	"\tAgentSpec\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1a\n" +
 	"\bprotocol\x18\x02 \x01(\tR\bprotocol\x12\x12\n" +

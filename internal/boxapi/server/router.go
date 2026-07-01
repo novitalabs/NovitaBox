@@ -61,6 +61,7 @@ func registerV1Routes(r *gin.Engine, h *handler.Handler) {
 	v1 := r.Group("/v1")
 	{
 		registerV1SandboxRoutes(v1, h)
+		registerV1TemplateRoutes(v1, h)
 		registerV1ImageRoutes(v1, h)
 		registerV1RuntimeRoutes(v1, h)
 	}
@@ -79,6 +80,13 @@ func registerV1SandboxRoutes(v1 *gin.RouterGroup, h *handler.Handler) {
 		sandboxes.POST("/:sandbox_id/poweroff", h.PoweroffSandbox)
 		sandboxes.POST("/:sandbox_id/poweron", h.PoweronSandbox)
 		sandboxes.POST("/:sandbox_id/reboot", h.RebootSandbox)
+	}
+}
+
+func registerV1TemplateRoutes(v1 *gin.RouterGroup, h *handler.Handler) {
+	templates := v1.Group("/templates")
+	{
+		templates.POST("/convert", h.ConvertTemplate)
 	}
 }
 

@@ -84,6 +84,45 @@ func TestSandboxStateUpdateRequiresExpectedState(t *testing.T) {
 	}
 }
 
+func TestSandboxNetworkSlotLease(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	defer st.Close()
+
+	if err := st.CreateSandbox(ctx, store.SandboxRecord{ID: "sbx-1", State: sandbox.StateRunning}); err != nil {
+		t.Fatalf("CreateSandbox(sbx-1) error = %v", err)
+	}
+	if err := st.CreateSandbox(ctx, store.SandboxRecord{ID: "sbx-2", State: sandbox.StateRunning}); err != nil {
+		t.Fatalf("CreateSandbox(sbx-2) error = %v", err)
+	}
+
+	slot1, err := st.AssignSandboxNetworkSlot(ctx, "sbx-1", 2)
+	if err != nil {
+		t.Fatalf("AssignSandboxNetworkSlot(sbx-1) error = %v", err)
+	}
+	if slot1 != 1 {
+		t.Fatalf("slot1 = %d, want 1", slot1)
+	}
+	slot2, err := st.AssignSandboxNetworkSlot(ctx, "sbx-2", 2)
+	if err != nil {
+		t.Fatalf("AssignSandboxNetworkSlot(sbx-2) error = %v", err)
+	}
+	if slot2 != 2 {
+		t.Fatalf("slot2 = %d, want 2", slot2)
+	}
+
+	if err := st.ReleaseSandboxNetworkSlot(ctx, "sbx-1"); err != nil {
+		t.Fatalf("ReleaseSandboxNetworkSlot() error = %v", err)
+	}
+	slot1Again, err := st.AssignSandboxNetworkSlot(ctx, "sbx-1", 2)
+	if err != nil {
+		t.Fatalf("AssignSandboxNetworkSlot(sbx-1 again) error = %v", err)
+	}
+	if slot1Again != 1 {
+		t.Fatalf("slot1Again = %d, want released slot 1", slot1Again)
+	}
+}
+
 func TestArtifactCRUD(t *testing.T) {
 	ctx := context.Background()
 	st := openStore(t)

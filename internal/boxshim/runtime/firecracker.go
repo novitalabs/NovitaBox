@@ -3,12 +3,10 @@ package runtime
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,7 +122,7 @@ func (d *FirecrackerDriver) Pause(ctx context.Context, sandboxID string) (*novit
 		return nil, err
 	}
 
-	if err := d.client.patch(ctx, "/vm", firecrackerVMStateRequest{State: "Paused"}); err != nil {
+	if err := d.client.PauseVM(ctx); err != nil {
 		return nil, d.withLogTail(fmt.Errorf("pause firecracker vm: %w", err))
 	}
 
@@ -139,7 +137,7 @@ func (d *FirecrackerDriver) Pause(ctx context.Context, sandboxID string) (*novit
 		SnapshotPath: paths.tmpSnapfilePath,
 		MemFilePath:  paths.tmpMemfilePath,
 	}
-	if err := d.client.put(ctx, "/snapshot/create", req); err != nil {
+	if err := d.client.CreateSnapshot(ctx, req); err != nil {
 		return nil, d.withLogTail(fmt.Errorf("create firecracker snapshot: %w", err))
 	}
 	if err := paths.commit(); err != nil {
@@ -302,7 +300,7 @@ func (d *FirecrackerDriver) Resume(ctx context.Context, spec *novitaboxv1.Runtim
 		ResumeVM:            true,
 		EnableDiffSnapshots: false,
 	}
-	if err := d.client.put(ctx, "/snapshot/load", req); err != nil {
+	if err := d.client.LoadSnapshot(ctx, req); err != nil {
 		_ = d.killLocked()
 		return nil, d.withLogTail(fmt.Errorf("load firecracker snapshot: %w", err))
 	}
@@ -350,8 +348,7 @@ func (d *FirecrackerDriver) Stop(ctx context.Context, sandboxID string, timeout 
 	}
 
 	if d.client != nil {
-		req := firecrackerActionRequest{ActionType: "SendCtrlAltDel"}
-		if err := d.client.put(ctx, "/actions", req); err != nil {
+		if err := d.client.SendCtrlAltDel(ctx); err != nil {
 			d.logger.Warn("firecracker graceful shutdown failed", "sandbox_id", sandboxID, "error", err)
 		}
 	}
@@ -434,21 +431,21 @@ func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitabo
 		memoryMB = 512
 	}
 
-	if err := d.client.put(ctx, "/machine-config", firecrackerMachineConfig{
+	if err := d.client.PutMachineConfig(ctx, firecrackerMachineConfig{
 		VCPUCount:  int64(vcpu),
 		MemSizeMib: int64(memoryMB),
 	}); err != nil {
 		return fmt.Errorf("configure firecracker machine: %w", err)
 	}
 
-	if err := d.client.put(ctx, "/boot-source", firecrackerBootSource{
+	if err := d.client.PutBootSource(ctx, firecrackerBootSource{
 		KernelImagePath: spec.GetKernel().GetKernelPath(),
 		BootArgs:        bootArgs(spec),
 	}); err != nil {
 		return fmt.Errorf("configure firecracker boot source: %w", err)
 	}
 
-	if err := d.client.put(ctx, "/drives/rootfs", firecrackerDrive{
+	if err := d.client.PutDrive(ctx, firecrackerDrive{
 		DriveID:      "rootfs",
 		PathOnHost:   spec.GetRootfs().GetPath(),
 		IsRootDevice: true,
@@ -463,7 +460,7 @@ func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitabo
 		if drive.GetPath() == "" {
 			return fmt.Errorf("runtime_spec.extra_drives[%s].path is required for firecracker", drive.GetDriveId())
 		}
-		if err := d.client.put(ctx, "/drives/"+drive.GetDriveId(), firecrackerDrive{
+		if err := d.client.PutDrive(ctx, firecrackerDrive{
 			DriveID:      drive.GetDriveId(),
 			PathOnHost:   drive.GetPath(),
 			IsRootDevice: false,
@@ -474,7 +471,7 @@ func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitabo
 	}
 
 	if spec.GetNetwork() != nil && spec.GetNetwork().GetTapName() != "" {
-		if err := d.client.put(ctx, "/network-interfaces/eth0", firecrackerNetworkInterface{
+		if err := d.client.PutNetworkInterface(ctx, firecrackerNetworkInterface{
 			IfaceID:     "eth0",
 			HostDevName: spec.GetNetwork().GetTapName(),
 			GuestMAC:    spec.GetNetwork().GetMac(),
@@ -483,7 +480,7 @@ func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitabo
 		}
 	}
 
-	if err := d.client.put(ctx, "/actions", firecrackerActionRequest{ActionType: "InstanceStart"}); err != nil {
+	if err := d.client.StartInstance(ctx); err != nil {
 		return fmt.Errorf("start firecracker instance: %w", err)
 	}
 
@@ -793,115 +790,4 @@ func joinArgs(args []string) string {
 		buf.WriteString(arg)
 	}
 	return buf.String()
-}
-
-type firecrackerClient struct {
-	socketPath string
-	httpClient *http.Client
-}
-
-func newFirecrackerClient(socketPath string) *firecrackerClient {
-	return &firecrackerClient{
-		socketPath: socketPath,
-		httpClient: &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-					return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
-				},
-			},
-		},
-	}
-}
-
-func (c *firecrackerClient) get(ctx context.Context, path string) error {
-	return c.do(ctx, http.MethodGet, path, nil)
-}
-
-func (c *firecrackerClient) put(ctx context.Context, path string, body any) error {
-	return c.do(ctx, http.MethodPut, path, body)
-}
-
-func (c *firecrackerClient) patch(ctx context.Context, path string, body any) error {
-	return c.do(ctx, http.MethodPatch, path, body)
-}
-
-func (c *firecrackerClient) do(ctx context.Context, method string, path string, body any) error {
-	var r io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal firecracker request: %w", err)
-		}
-		r = bytes.NewReader(data)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, "http://unix"+path, r)
-	if err != nil {
-		return fmt.Errorf("create firecracker request: %w", err)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return nil
-	}
-
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	return fmt.Errorf("firecracker api %s %s failed: status=%d body=%s", method, path, resp.StatusCode, string(data))
-}
-
-type firecrackerMachineConfig struct {
-	VCPUCount  int64 `json:"vcpu_count"`
-	MemSizeMib int64 `json:"mem_size_mib"`
-}
-
-type firecrackerBootSource struct {
-	KernelImagePath string `json:"kernel_image_path"`
-	BootArgs        string `json:"boot_args,omitempty"`
-}
-
-type firecrackerDrive struct {
-	DriveID      string `json:"drive_id"`
-	PathOnHost   string `json:"path_on_host"`
-	IsRootDevice bool   `json:"is_root_device"`
-	IsReadOnly   bool   `json:"is_read_only"`
-}
-
-type firecrackerNetworkInterface struct {
-	IfaceID     string `json:"iface_id"`
-	HostDevName string `json:"host_dev_name"`
-	GuestMAC    string `json:"guest_mac,omitempty"`
-}
-
-type firecrackerActionRequest struct {
-	ActionType string `json:"action_type"`
-}
-
-type firecrackerVMStateRequest struct {
-	State string `json:"state"`
-}
-
-type firecrackerSnapshotCreateRequest struct {
-	SnapshotType string `json:"snapshot_type"`
-	SnapshotPath string `json:"snapshot_path"`
-	MemFilePath  string `json:"mem_file_path"`
-}
-
-type firecrackerMemBackend struct {
-	BackendPath string `json:"backend_path"`
-	BackendType string `json:"backend_type"`
-}
-
-type firecrackerSnapshotLoadRequest struct {
-	SnapshotPath        string                `json:"snapshot_path"`
-	MemBackend          firecrackerMemBackend `json:"mem_backend"`
-	ResumeVM            bool                  `json:"resume_vm"`
-	EnableDiffSnapshots bool                  `json:"enable_diff_snapshots"`
 }

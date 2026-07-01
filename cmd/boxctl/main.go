@@ -34,34 +34,516 @@ type processInfo struct {
 	PID int    `json:"pid,omitempty"`
 }
 
-func main() {
-	var proxyAddr string
-	var cwd string
-	var attachStdin bool
-	var tty bool
+type apiClient struct {
+	base string
+}
 
-	cmd := &cobra.Command{
+type templateCreateResponse struct {
+	TemplateID string `json:"templateID"`
+	BuildID    string `json:"buildID"`
+}
+
+func main() {
+	var apiAddr string
+	var proxyAddr string
+
+	root := &cobra.Command{
 		Use:   "boxctl",
 		Short: "NovitaBox command line client",
 	}
-	execCmd := &cobra.Command{
-		Use:   "exec [-it] <sandbox_id> <cmd> [args...]",
-		Short: "Execute a command in a sandbox",
-		Args:  cobra.MinimumNArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExec(proxyAddr, args[0], args[1:], cwd, attachStdin || tty)
-		},
-	}
-	execCmd.Flags().BoolVarP(&attachStdin, "interactive", "i", false, "attach stdin")
-	execCmd.Flags().BoolVarP(&tty, "tty", "t", false, "allocate a terminal")
-	execCmd.Flags().StringVar(&cwd, "cwd", "", "working directory inside the sandbox")
-	cmd.PersistentFlags().StringVar(&proxyAddr, "proxy", "http://127.0.0.1:8082", "boxproxy base URL")
-	cmd.AddCommand(execCmd)
+	root.PersistentFlags().StringVar(&apiAddr, "api", "http://127.0.0.1:8080", "boxapi base URL")
+	root.PersistentFlags().StringVar(&proxyAddr, "proxy", "http://127.0.0.1:8082", "boxproxy base URL")
 
-	if err := cmd.Execute(); err != nil {
+	root.AddCommand(newSandboxCommand(&apiAddr, &proxyAddr))
+	root.AddCommand(newTemplateCommand(&apiAddr))
+	root.AddCommand(newImageCommand(&apiAddr))
+	root.AddCommand(newRuntimeCommand(&apiAddr))
+	root.AddCommand(newExecCommand(&proxyAddr, "exec [-it] <sandbox_id> <cmd> [args...]", "Execute a command in a sandbox"))
+
+	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "boxctl: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "sandbox",
+		Short: "Manage sandboxes",
+	}
+
+	var createTemplateID string
+	var createImageID string
+	var createSnapshotID string
+	var createRuntimeType string
+	createCmd := &cobra.Command{
+		Use:   "create [template_id]",
+		Short: "Create a sandbox",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			templateID := createTemplateID
+			if templateID == "" && len(args) > 0 {
+				templateID = args[0]
+			}
+			if templateID == "" && createImageID == "" && createSnapshotID == "" {
+				return fmt.Errorf("template id, image id, or snapshot id is required")
+			}
+			body := map[string]any{
+				"templateID": templateID,
+			}
+			if createImageID != "" {
+				body["image_id"] = createImageID
+			}
+			if createSnapshotID != "" {
+				body["snapshot_id"] = createSnapshotID
+			}
+			if createRuntimeType != "" {
+				body["runtime_type"] = createRuntimeType
+			}
+			return requestAndPrint(*apiAddr, http.MethodPost, "/v1/sandboxes", body)
+		},
+	}
+	createCmd.Flags().StringVar(&createTemplateID, "template", "", "template id")
+	createCmd.Flags().StringVar(&createImageID, "image", "", "image id")
+	createCmd.Flags().StringVar(&createSnapshotID, "snapshot", "", "snapshot id")
+	createCmd.Flags().StringVar(&createRuntimeType, "runtime", "", "runtime type")
+
+	cmd.AddCommand(createCmd)
+	cmd.AddCommand(listAPICommand(apiAddr, "list", "List sandboxes", "/v1/sandboxes"))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "get <sandbox_id>", "Get sandbox information", http.MethodGet, "/v1/sandboxes/%s", 1, nil))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "pause <sandbox_id>", "Pause a sandbox", http.MethodPost, "/v1/sandboxes/%s/pause", 1, map[string]any{}))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "resume <sandbox_id>", "Resume a sandbox", http.MethodPost, "/v1/sandboxes/%s/resume", 1, map[string]any{}))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "poweroff <sandbox_id>", "Power off a sandbox", http.MethodPost, "/v1/sandboxes/%s/poweroff", 1, map[string]any{}))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "poweron <sandbox_id>", "Power on a sandbox", http.MethodPost, "/v1/sandboxes/%s/poweron", 1, map[string]any{}))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "reboot <sandbox_id>", "Reboot a sandbox", http.MethodPost, "/v1/sandboxes/%s/reboot", 1, map[string]any{}))
+
+	deleteCmd := simpleAPICommand(apiAddr, "delete <sandbox_id>", "Delete a sandbox", http.MethodDelete, "/v1/sandboxes/%s", 1, nil)
+	deleteCmd.Aliases = []string{"kill", "rm"}
+	cmd.AddCommand(deleteCmd)
+
+	stopCmd := simpleAPICommand(apiAddr, "stop <sandbox_id>", "Power off a sandbox", http.MethodPost, "/v1/sandboxes/%s/poweroff", 1, map[string]any{})
+	stopCmd.Hidden = true
+	startCmd := simpleAPICommand(apiAddr, "start <sandbox_id>", "Power on a sandbox", http.MethodPost, "/v1/sandboxes/%s/poweron", 1, map[string]any{})
+	startCmd.Hidden = true
+	restartCmd := simpleAPICommand(apiAddr, "restart <sandbox_id>", "Reboot a sandbox", http.MethodPost, "/v1/sandboxes/%s/reboot", 1, map[string]any{})
+	restartCmd.Hidden = true
+	cmd.AddCommand(stopCmd, startCmd, restartCmd)
+
+	cmd.AddCommand(newSandboxExecCommand(proxyAddr))
+	cmd.AddCommand(newShellCommand(proxyAddr))
+
+	return cmd
+}
+
+func newTemplateCommand(apiAddr *string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "template",
+		Short: "Manage templates",
+	}
+
+	cmd.AddCommand(newTemplateCreateCommand(apiAddr))
+	cmd.AddCommand(newTemplateBuildCommand(apiAddr))
+	cmd.AddCommand(listAPICommand(apiAddr, "list", "List templates", "/templates"))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "get <template_id>", "Get template information", http.MethodGet, "/templates/%s", 1, nil))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "status <template_id> <build_id>", "Get template build status", http.MethodGet, "/v2/templates/%s/builds/%s/status", 2, nil))
+	cmd.AddCommand(newTemplateConvertCommand(apiAddr))
+
+	deleteCmd := simpleAPICommand(apiAddr, "delete <template_id>", "Delete a template", http.MethodDelete, "/templates/%s", 1, nil)
+	deleteCmd.Aliases = []string{"rm"}
+	cmd.AddCommand(deleteCmd)
+
+	return cmd
+}
+
+func newTemplateCreateCommand(apiAddr *string) *cobra.Command {
+	var templateID string
+	var cpuCount int32
+	var memoryMB int32
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a template record and build id",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]any{
+				"name": args[0],
+			}
+			if templateID != "" {
+				body["templateID"] = templateID
+			}
+			if cpuCount > 0 {
+				body["cpuCount"] = cpuCount
+			}
+			if memoryMB > 0 {
+				body["memoryMB"] = memoryMB
+			}
+			return requestAndPrint(*apiAddr, http.MethodPost, "/v3/templates", body)
+		},
+	}
+	cmd.Flags().StringVar(&templateID, "template", "", "template id")
+	cmd.Flags().Int32Var(&cpuCount, "cpu", 0, "template CPU count")
+	cmd.Flags().Int32Var(&memoryMB, "memory", 0, "template memory in MB")
+	return cmd
+}
+
+func newTemplateBuildCommand(apiAddr *string) *cobra.Command {
+	var templateID string
+	var cpuCount int32
+	var memoryMB int32
+	var fromImage string
+	var fromTemplate string
+	var startCmd string
+	var readyCmd string
+	var runSteps []string
+	var execSteps []string
+
+	cmd := &cobra.Command{
+		Use:   "build <name>",
+		Short: "Create and build a template",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client := apiClient{base: *apiAddr}
+			createBody := map[string]any{
+				"name": args[0],
+			}
+			if templateID != "" {
+				createBody["templateID"] = templateID
+			}
+			if cpuCount > 0 {
+				createBody["cpuCount"] = cpuCount
+			}
+			if memoryMB > 0 {
+				createBody["memoryMB"] = memoryMB
+			}
+
+			createData, err := client.request(http.MethodPost, "/v3/templates", createBody)
+			if err != nil {
+				return err
+			}
+			var createResp templateCreateResponse
+			if err := json.Unmarshal(createData, &createResp); err != nil {
+				return fmt.Errorf("decode template create response: %w", err)
+			}
+			if createResp.TemplateID == "" || createResp.BuildID == "" {
+				return fmt.Errorf("template create response missing templateID or buildID")
+			}
+
+			buildBody := map[string]any{}
+			if fromImage != "" {
+				buildBody["fromImage"] = fromImage
+			}
+			if fromTemplate != "" {
+				buildBody["fromTemplate"] = fromTemplate
+			}
+			if startCmd != "" {
+				buildBody["startCmd"] = startCmd
+			}
+			if readyCmd != "" {
+				buildBody["readyCmd"] = readyCmd
+			}
+			steps := make([]map[string]any, 0, len(runSteps)+len(execSteps))
+			for _, step := range runSteps {
+				steps = append(steps, map[string]any{
+					"type": "RUN",
+					"args": []string{step},
+				})
+			}
+			for _, step := range execSteps {
+				args := strings.Fields(step)
+				if len(args) == 0 {
+					return fmt.Errorf("--exec command cannot be empty")
+				}
+				steps = append(steps, map[string]any{
+					"type": "EXEC",
+					"args": args,
+				})
+			}
+			if len(steps) > 0 {
+				buildBody["steps"] = steps
+			}
+
+			path := fmt.Sprintf("/v2/templates/%s/builds/%s", url.PathEscape(createResp.TemplateID), url.PathEscape(createResp.BuildID))
+			if _, err := client.request(http.MethodPost, path, buildBody); err != nil {
+				return err
+			}
+			return printJSON(map[string]string{
+				"templateID": createResp.TemplateID,
+				"buildID":    createResp.BuildID,
+				"status":     "accepted",
+			})
+		},
+	}
+	cmd.Flags().StringVar(&templateID, "template", "", "template id")
+	cmd.Flags().Int32Var(&cpuCount, "cpu", 0, "template CPU count")
+	cmd.Flags().Int32Var(&memoryMB, "memory", 0, "template memory in MB")
+	cmd.Flags().StringVar(&fromImage, "from-image", "", "source docker image")
+	cmd.Flags().StringVar(&fromTemplate, "from-template", "", "source template id")
+	cmd.Flags().StringVar(&startCmd, "start-cmd", "", "template start command")
+	cmd.Flags().StringVar(&readyCmd, "ready-cmd", "", "template ready command")
+	cmd.Flags().StringArrayVar(&runSteps, "run", nil, "shell build step; can be repeated")
+	cmd.Flags().StringArrayVar(&execSteps, "exec", nil, "exec build step split by whitespace; can be repeated")
+	return cmd
+}
+
+func newTemplateConvertCommand(apiAddr *string) *cobra.Command {
+	var imageID string
+	cmd := &cobra.Command{
+		Use:   "convert <template_id>",
+		Short: "Convert a template to an image",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]any{
+				"templateID": args[0],
+			}
+			if imageID != "" {
+				body["imageID"] = imageID
+			}
+			return requestAndPrint(*apiAddr, http.MethodPost, "/v1/templates/convert", body)
+		},
+	}
+	cmd.Flags().StringVar(&imageID, "image", "", "image id")
+	return cmd
+}
+
+func newImageCommand(apiAddr *string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "image",
+		Short: "Manage images",
+	}
+
+	createCmd := newImageCreateCommand(apiAddr)
+	saveCmd := newImageCreateCommand(apiAddr)
+	saveCmd.Use = "save <template_id>"
+	saveCmd.Short = "Create an image from a template"
+	saveCmd.Hidden = true
+
+	cmd.AddCommand(createCmd, saveCmd)
+	cmd.AddCommand(listAPICommand(apiAddr, "list", "List images", "/v1/images"))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "get <image_id>", "Get image information", http.MethodGet, "/v1/images/%s", 1, nil))
+	deleteCmd := simpleAPICommand(apiAddr, "delete <image_id>", "Delete an image", http.MethodDelete, "/v1/images/%s", 1, nil)
+	deleteCmd.Aliases = []string{"rm"}
+	cmd.AddCommand(deleteCmd)
+
+	return cmd
+}
+
+func newImageCreateCommand(apiAddr *string) *cobra.Command {
+	var imageID string
+	var labels []string
+	cmd := &cobra.Command{
+		Use:   "create <template_id>",
+		Short: "Create an image from a template",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]any{
+				"templateID": args[0],
+			}
+			if imageID != "" {
+				body["imageID"] = imageID
+			}
+			parsedLabels, err := parseKeyValues(labels)
+			if err != nil {
+				return err
+			}
+			if len(parsedLabels) > 0 {
+				body["labels"] = parsedLabels
+			}
+			return requestAndPrint(*apiAddr, http.MethodPost, "/v1/images", body)
+		},
+	}
+	cmd.Flags().StringVar(&imageID, "image", "", "image id")
+	cmd.Flags().StringArrayVar(&labels, "label", nil, "image label in key=value form; can be repeated")
+	return cmd
+}
+
+func newRuntimeCommand(apiAddr *string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "runtime",
+		Short: "Show runtime capabilities",
+	}
+	cmd.AddCommand(listAPICommand(apiAddr, "list", "List runtimes", "/v1/runtimes"))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "show <runtime_type>", "Show runtime information", http.MethodGet, "/v1/runtimes/%s", 1, nil))
+	cmd.AddCommand(simpleAPICommand(apiAddr, "capabilities <runtime_type>", "Show runtime capabilities", http.MethodGet, "/v1/runtimes/%s/capabilities", 1, nil))
+	return cmd
+}
+
+func newSandboxExecCommand(proxyAddr *string) *cobra.Command {
+	return newExecCommand(proxyAddr, "exec [-it] <sandbox_id> <cmd> [args...]", "Execute a command in a sandbox")
+}
+
+func newExecCommand(proxyAddr *string, use string, short string) *cobra.Command {
+	var cwd string
+	var attachStdin bool
+	var tty bool
+	cmd := &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runExec(*proxyAddr, args[0], args[1:], cwd, attachStdin || tty)
+		},
+	}
+	cmd.Flags().BoolVarP(&attachStdin, "interactive", "i", false, "attach stdin")
+	cmd.Flags().BoolVarP(&tty, "tty", "t", false, "allocate a terminal")
+	cmd.Flags().StringVar(&cwd, "cwd", "", "working directory inside the sandbox")
+	return cmd
+}
+
+func newShellCommand(proxyAddr *string) *cobra.Command {
+	var shell string
+	var cwd string
+	cmd := &cobra.Command{
+		Use:   "shell <sandbox_id>",
+		Short: "Launch an interactive shell in a sandbox",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runExec(*proxyAddr, args[0], []string{shell}, cwd, true)
+		},
+	}
+	cmd.Flags().StringVar(&shell, "shell", "/bin/sh", "shell executable")
+	cmd.Flags().StringVar(&cwd, "cwd", "", "working directory inside the sandbox")
+	return cmd
+}
+
+func simpleAPICommand(apiAddr *string, use string, short string, method string, pathFormat string, argCount int, body any) *cobra.Command {
+	return &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.ExactArgs(argCount),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pathArgs := make([]any, 0, len(args))
+			for _, arg := range args {
+				pathArgs = append(pathArgs, url.PathEscape(arg))
+			}
+			path := pathFormat
+			if len(pathArgs) > 0 {
+				path = fmt.Sprintf(pathFormat, pathArgs...)
+			}
+			return requestAndPrint(*apiAddr, method, path, body)
+		},
+	}
+}
+
+func listAPICommand(apiAddr *string, use string, short string, path string) *cobra.Command {
+	cmd := simpleAPICommand(apiAddr, use, short, http.MethodGet, path, 0, nil)
+	cmd.Aliases = []string{"ls"}
+	return cmd
+}
+
+func requestAndPrint(apiAddr string, method string, path string, body any) error {
+	data, err := apiClient{base: apiAddr}.request(method, path, body)
+	if err != nil {
+		return err
+	}
+	if len(data) == 0 {
+		fmt.Println("ok")
+		return nil
+	}
+	return printRawJSON(data)
+}
+
+func (c apiClient) request(method string, path string, body any) ([]byte, error) {
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reader = bytes.NewReader(data)
+	}
+
+	req, err := http.NewRequest(method, controlURL(c.base, path), reader)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, apiError(resp.Status, data)
+	}
+	return data, nil
+}
+
+func controlURL(base string, path string) string {
+	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(path, "/")
+}
+
+func apiError(status string, data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return fmt.Errorf("%s", status)
+	}
+
+	var flat struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(data, &flat); err == nil && flat.Message != "" {
+		if flat.Code != "" {
+			return fmt.Errorf("%s: %s: %s", status, flat.Code, flat.Message)
+		}
+		return fmt.Errorf("%s: %s", status, flat.Message)
+	}
+
+	var nested struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(data, &nested); err == nil && nested.Error.Message != "" {
+		if nested.Error.Code != "" {
+			return fmt.Errorf("%s: %s: %s", status, nested.Error.Code, nested.Error.Message)
+		}
+		return fmt.Errorf("%s: %s", status, nested.Error.Message)
+	}
+
+	return fmt.Errorf("%s: %s", status, trimmed)
+}
+
+func printRawJSON(data []byte) error {
+	var out bytes.Buffer
+	if err := json.Indent(&out, data, "", "  "); err != nil {
+		fmt.Println(strings.TrimSpace(string(data)))
+		return nil
+	}
+	_, err := out.WriteTo(os.Stdout)
+	if err != nil {
+		return err
+	}
+	fmt.Println()
+	return nil
+}
+
+func printJSON(value any) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return printRawJSON(data)
+}
+
+func parseKeyValues(values []string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(values))
+	for _, value := range values {
+		key, val, ok := strings.Cut(value, "=")
+		if !ok || key == "" {
+			return nil, fmt.Errorf("invalid key=value pair %q", value)
+		}
+		out[key] = val
+	}
+	return out, nil
 }
 
 func runExec(proxyAddr string, sandboxID string, command []string, cwd string, interactive bool) error {

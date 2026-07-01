@@ -56,7 +56,7 @@ func TestSandboxNetworkCompletePreservesExplicitValues(t *testing.T) {
 	cfg := config.Default()
 	manager := newSandboxNetworkManager(cfg)
 
-	spec, err := manager.Complete("i-test-sandbox", &novitaboxv1.NetworkSpec{
+	spec, err := manager.Complete("i-test-sandbox", 1, &novitaboxv1.NetworkSpec{
 		NamespaceName: "custom-ns",
 		TapName:       "customtap",
 		GuestIp:       "10.0.0.2",

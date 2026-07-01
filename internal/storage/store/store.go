@@ -17,6 +17,7 @@ type SandboxRecord struct {
 	TemplateID  string
 	ImageID     string
 	SnapshotID  string
+	NetworkSlot uint32
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -87,6 +88,8 @@ type Store interface {
 	GetSandbox(ctx context.Context, sandboxID string) (*SandboxRecord, error)
 	ListSandboxes(ctx context.Context) ([]SandboxRecord, error)
 	UpdateSandboxState(ctx context.Context, sandboxID string, from, to sandbox.State, action string) error
+	AssignSandboxNetworkSlot(ctx context.Context, sandboxID string, maxSlot uint32) (uint32, error)
+	ReleaseSandboxNetworkSlot(ctx context.Context, sandboxID string) error
 	DeleteSandbox(ctx context.Context, sandboxID string) error
 
 	CreateImage(ctx context.Context, record ImageRecord) error
