@@ -1,8 +1,8 @@
 ## Components
 
-### novitabox api
+### boxapi
 
-The API layer is the global control entrypoint.
+`boxapi` is the HTTP control plane entrypoint.
 
 Responsibilities:
 
@@ -54,9 +54,9 @@ Responsibilities:
 - handle file operations
 - expose health and metrics endpoints
 
-### proxy
+### boxproxy
 
-`proxy` is the data plane entrypoint.
+`boxproxy` is the data plane entrypoint.
 
 Responsibilities:
 
@@ -64,4 +64,3 @@ Responsibilities:
 - proxy user services running inside sandboxes
 - upgrade shell sessions to WebSocket
 - resolve sandbox routes through sandbox identity
-- 

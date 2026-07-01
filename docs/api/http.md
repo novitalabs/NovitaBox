@@ -1,6 +1,161 @@
 ## API Overview
 
-### E2B-Compatible API
+NovitaBox exposes compatibility routes and local native routes. The default local API endpoint is:
+
+```text
+http://127.0.0.1:8080
+```
+
+When Caddy is enabled:
+
+```text
+https://novitabox.local
+```
+
+## Health
+
+```bash
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/healthz
+```
+
+## Templates
+
+Create a template record:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v3/templates \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"my-template"}'
+```
+
+Start a build:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v2/templates/tpl-xxxxxxxxxxxxxxxxxxxx/builds/<build_id> \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "fromImage": "ubuntu:22.04",
+    "steps": [
+      {"type": "RUN", "args": ["echo hello from novitabox"]}
+    ]
+  }'
+```
+
+Get build status:
+
+```bash
+curl -sS http://127.0.0.1:8080/v2/templates/tpl-xxxxxxxxxxxxxxxxxxxx/builds/<build_id>/status
+```
+
+List templates:
+
+```bash
+curl -sS http://127.0.0.1:8080/templates
+```
+
+Get a template:
+
+```bash
+curl -sS http://127.0.0.1:8080/templates/tpl-xxxxxxxxxxxxxxxxxxxx
+```
+
+Delete a template:
+
+```bash
+curl -i -X DELETE http://127.0.0.1:8080/templates/tpl-xxxxxxxxxxxxxxxxxxxx
+```
+
+## Sandboxes
+
+Create a sandbox from a template:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes \
+  -H 'Content-Type: application/json' \
+  -d '{"templateID":"tpl-xxxxxxxxxxxxxxxxxxxx"}'
+```
+
+Create from an image:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes \
+  -H 'Content-Type: application/json' \
+  -d '{"imageID":"img-xxxxxxxxxxxxxxxxxxxx"}'
+```
+
+List sandboxes:
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/sandboxes
+```
+
+Get sandbox info:
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx
+```
+
+Pause and resume:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/pause
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/resume
+```
+
+Power lifecycle:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/poweroff
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/poweron
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/reboot
+```
+
+Delete:
+
+```bash
+curl -i -X DELETE http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx
+```
+
+## Images
+
+Create an image from a template:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/images \
+  -H 'Content-Type: application/json' \
+  -d '{"templateID":"tpl-xxxxxxxxxxxxxxxxxxxx","imageID":"img-xxxxxxxxxxxxxxxxxxxx"}'
+```
+
+List images:
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/images
+```
+
+Get an image:
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/images/img-xxxxxxxxxxxxxxxxxxxx
+```
+
+Delete an image:
+
+```bash
+curl -i -X DELETE http://127.0.0.1:8080/v1/images/img-xxxxxxxxxxxxxxxxxxxx
+```
+
+## Runtimes
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/runtimes
+curl -sS http://127.0.0.1:8080/v1/runtimes/firecracker
+curl -sS http://127.0.0.1:8080/v1/runtimes/firecracker/capabilities
+```
+
+## Route Summary
+
+### Compatible API
 
 ```http
 POST   /v1/sandboxes
@@ -20,7 +175,7 @@ GET    /v1/templates/{template_id}
 DELETE /v1/templates/{template_id}
 ```
 
-### Novita Native API
+### Native API
 
 ```http
 POST   /v1/sandboxes/{sandbox_id}/poweroff

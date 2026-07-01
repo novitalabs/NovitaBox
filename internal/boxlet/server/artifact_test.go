@@ -102,6 +102,40 @@ func TestCloneOrCopyFileCopiesContent(t *testing.T) {
 	assertFileContent(t, dest, "content")
 }
 
+func TestInternalSandboxNetworkSpecUsesLowestFreeSlot(t *testing.T) {
+	root := t.TempDir()
+	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	defer st.Close()
+
+	if err := st.CreateSandbox(context.Background(), store.SandboxRecord{
+		ID:          "sbx-existing",
+		State:       "running",
+		RuntimeType: "firecracker",
+		TemplateID:  "tpl-existing",
+		NetworkSlot: 1,
+	}); err != nil {
+		t.Fatalf("create sandbox: %v", err)
+	}
+
+	cfg := config.Default()
+	cfg.RootDir = root
+	svc := newArtifactService(cfg, log.NewNop(), st)
+
+	spec, err := svc.internalSandboxNetworkSpec(context.Background(), "template-build-tpl-test")
+	if err != nil {
+		t.Fatalf("internalSandboxNetworkSpec() error = %v", err)
+	}
+	if spec.GetSlot() != 2 {
+		t.Fatalf("slot = %d, want 2", spec.GetSlot())
+	}
+	if spec.GetHostAccessIp() != "10.11.0.2" {
+		t.Fatalf("host access ip = %q, want 10.11.0.2", spec.GetHostAccessIp())
+	}
+}
+
 func TestArtifactServiceCreateTemplateSnapshotRequiresKernel(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "source-rootfs.ext4")

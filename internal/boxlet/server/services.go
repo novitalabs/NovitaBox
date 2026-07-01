@@ -1082,18 +1082,21 @@ func (s *artifactService) injectTemplateInit(ctx context.Context, rootfsPath str
 		return fmt.Errorf("write template init script: %w", err)
 	}
 
-	commands := []string{
-		"mkdir /novitabox",
-		"write " + debugfsQuote(initPath) + " /novitabox/init",
-		"sif /novitabox/init mode 0100755",
+	if err := runDebugfs(ctx, rootfsPath, "mkdir /novitabox"); err != nil && !strings.Contains(err.Error(), "File exists") {
+		return err
 	}
-	for _, command := range commands {
-		if err := runDebugfs(ctx, rootfsPath, command); err != nil {
-			if strings.HasPrefix(command, "mkdir ") && strings.Contains(err.Error(), "File exists") {
-				continue
-			}
-			return err
-		}
+	if err := runDebugfs(ctx, rootfsPath, "rm /novitabox/init"); err != nil && !strings.Contains(err.Error(), "File not found") {
+		return err
+	}
+	if err := runDebugfsScript(ctx, rootfsPath, []string{
+		"cd /novitabox",
+		"write " + debugfsQuote(initPath) + " init",
+		"sif init mode 0100755",
+	}); err != nil {
+		return err
+	}
+	if err := runDebugfs(ctx, rootfsPath, "stat /novitabox/init"); err != nil {
+		return err
 	}
 
 	return nil
@@ -1114,10 +1117,51 @@ exec ` + boxdPath + ` --addr ` + listenAddr + `
 
 func runDebugfs(ctx context.Context, rootfsPath string, command string) error {
 	cmd := exec.CommandContext(ctx, "debugfs", "-w", "-R", command, rootfsPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil {
 		return fmt.Errorf("debugfs %q failed: %w: %s", command, err, strings.TrimSpace(string(output)))
 	}
+	if hasDebugfsCommandError(output) {
+		return fmt.Errorf("debugfs %q failed: %s", command, strings.TrimSpace(string(output)))
+	}
 	return nil
+}
+
+func runDebugfsScript(ctx context.Context, rootfsPath string, commands []string) error {
+	workDir := filepath.Dir(rootfsPath)
+	cmdFile, err := os.CreateTemp(workDir, ".debugfs-commands-*")
+	if err != nil {
+		return fmt.Errorf("create debugfs command file: %w", err)
+	}
+	cmdFilePath := cmdFile.Name()
+	defer os.Remove(cmdFilePath)
+
+	for _, command := range commands {
+		if _, err := fmt.Fprintln(cmdFile, command); err != nil {
+			_ = cmdFile.Close()
+			return fmt.Errorf("write debugfs command file: %w", err)
+		}
+	}
+	if err := cmdFile.Close(); err != nil {
+		return fmt.Errorf("close debugfs command file: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "debugfs", "-w", "-f", cmdFilePath, rootfsPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("debugfs script failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if hasDebugfsCommandError(output) {
+		return fmt.Errorf("debugfs script failed: %s", strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func hasDebugfsCommandError(output []byte) bool {
+	text := string(output)
+	return strings.Contains(text, "File not found") ||
+		strings.Contains(text, "Ext2 directory already exists") ||
+		strings.Contains(text, "while creating directory")
 }
 
 func debugfsQuote(path string) string {
@@ -1250,7 +1294,7 @@ func (s *artifactService) internalSandboxNetworkSpec(ctx context.Context, sandbo
 			}
 		}
 	}
-	for slot := maxSlot; slot > 0; slot-- {
+	for slot := uint32(1); slot <= maxSlot; slot++ {
 		if _, ok := used[slot]; !ok {
 			return manager.SpecForSlot(sandboxID, slot)
 		}
