@@ -19,6 +19,7 @@ RELEASE_VERSION="${RELEASE_VERSION:-v0.0.1}"
 SOURCE_DIR="${SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 INSTALL_GO="${INSTALL_GO:-auto}"
 GO_VERSION="${GO_VERSION:-1.26.4}"
+GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
 ENABLE_DNS="${ENABLE_DNS:-1}"
 ENABLE_CADDY="${ENABLE_CADDY:-1}"
 REQUIRE_KVM="${REQUIRE_KVM:-1}"
@@ -53,9 +54,12 @@ need_root() {
 }
 
 need_no_spaces() {
-  case "$ROOT_DIR $IMAGE_PATH $SOURCE_DIR" in
-    *" "*) die "ROOT_DIR, IMAGE_PATH, and SOURCE_DIR must not contain spaces" ;;
-  esac
+  local path
+  for path in "$ROOT_DIR" "$IMAGE_PATH" "$SOURCE_DIR"; do
+    case "$path" in
+      *" "*) die "ROOT_DIR, IMAGE_PATH, and SOURCE_DIR must not contain spaces: $path" ;;
+    esac
+  done
 }
 
 command_exists() {
@@ -158,9 +162,9 @@ prepare_btrfs_root() {
   log "preparing btrfs root at ${ROOT_DIR}"
   mkdir -p "$(dirname "$IMAGE_PATH")" "$ROOT_DIR"
 
-  if findmnt -rn --target "$ROOT_DIR" >/dev/null 2>&1; then
+  if mountpoint -q "$ROOT_DIR"; then
     local fstype
-    fstype="$(findmnt -rn --target "$ROOT_DIR" -o FSTYPE)"
+    fstype="$(findmnt -rn --mountpoint "$ROOT_DIR" -o FSTYPE)"
     if [[ "$fstype" != "btrfs" ]]; then
       die "$ROOT_DIR is mounted as $fstype, but NovitaBox requires btrfs for this installer"
     fi
@@ -241,7 +245,7 @@ EOF
 build_components() {
   local arch="$1"
   log "building NovitaBox linux-${arch} components"
-  make -C "$SOURCE_DIR" "build-linux-${arch}"
+  GOPROXY="$GOPROXY" make -C "$SOURCE_DIR" "build-linux-${arch}"
 }
 
 install_components() {

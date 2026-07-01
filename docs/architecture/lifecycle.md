@@ -9,8 +9,6 @@ Supported sandbox operations:
 - list
 - exec
 - shell
-- commit
-- clone
 
 Extended maintenance operations:
 
