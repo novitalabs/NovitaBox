@@ -52,6 +52,16 @@ func TestVethAddrsUseSlotPair(t *testing.T) {
 	}
 }
 
+func TestNamespacePeerVethDoesNotUseFinalEth0Name(t *testing.T) {
+	netns := "nb-test"
+	if got := nsVethName(netns); got != "eth0" {
+		t.Fatalf("nsVethName() = %q, want eth0", got)
+	}
+	if got := nsPeerVethName(netns); got == "" || got == nsVethName(netns) {
+		t.Fatalf("nsPeerVethName() = %q, want a unique temporary name", got)
+	}
+}
+
 func TestSandboxNetworkCompletePreservesExplicitValues(t *testing.T) {
 	cfg := config.Default()
 	manager := newSandboxNetworkManager(cfg)

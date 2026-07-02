@@ -8,8 +8,9 @@ set -Eeuo pipefail
 #
 # Common overrides:
 #   ROOT_DIR=/data/novitabox IMAGE_SIZE=100G DOMAIN=novitabox.local sudo -E scripts/install.sh
-#   FIRECRACKER_URL=https://.../firecracker KERNEL_URL=https://.../vmlinux.bin sudo -E scripts/install.sh
+#   FIRECRACKER_URL=https://.../firecracker-amd64 KERNEL_URL=https://.../vmlinux.bin-amd64 sudo -E scripts/install.sh
 #   FIRECRACKER_PATH=/path/to/firecracker KERNEL_PATH=/path/to/vmlinux.bin sudo -E scripts/install.sh
+#   SKIP_BUILD=1 SOURCE_DIR=/path/to/prebuilt-layout sudo -E scripts/install.sh
 
 ROOT_DIR="${ROOT_DIR:-/data/novitabox}"
 IMAGE_PATH="${IMAGE_PATH:-/data/novitabox.img}"
@@ -20,6 +21,8 @@ SOURCE_DIR="${SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 INSTALL_GO="${INSTALL_GO:-auto}"
 GO_VERSION="${GO_VERSION:-1.26.4}"
 GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
+DOCKER_REGISTRY_MIRRORS="${DOCKER_REGISTRY_MIRRORS:-https://docker.m.daocloud.io,https://docker.1ms.run}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
 ENABLE_DNS="${ENABLE_DNS:-1}"
 ENABLE_CADDY="${ENABLE_CADDY:-1}"
 REQUIRE_KVM="${REQUIRE_KVM:-1}"
@@ -27,8 +30,8 @@ BOXAPI_ADDR="${BOXAPI_ADDR:-127.0.0.1:8080}"
 BOXLET_ADDR="${BOXLET_ADDR:-127.0.0.1:8081}"
 BOXPROXY_ADDR="${BOXPROXY_ADDR:-127.0.0.1:8082}"
 
-FIRECRACKER_URL="${FIRECRACKER_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/firecracker}"
-KERNEL_URL="${KERNEL_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/vmlinux.bin}"
+FIRECRACKER_URL="${FIRECRACKER_URL:-}"
+KERNEL_URL="${KERNEL_URL:-}"
 FIRECRACKER_PATH="${FIRECRACKER_PATH:-}"
 KERNEL_PATH="${KERNEL_PATH:-}"
 
@@ -66,12 +69,58 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+trim_space() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "${value}"
+}
+
+docker_registry_mirrors_json_lines() {
+  local input="$1"
+  local mirror escaped i suffix
+  local mirrors=()
+
+  if [[ -z "${input}" || "${input}" == "none" || "${input}" == "0" ]]; then
+    return
+  fi
+
+  IFS=',' read -r -a raw_mirrors <<<"${input}"
+  for mirror in "${raw_mirrors[@]}"; do
+    mirror="$(trim_space "${mirror}")"
+    if [[ -n "${mirror}" ]]; then
+      mirrors+=("${mirror}")
+    fi
+  done
+
+  for ((i = 0; i < ${#mirrors[@]}; i++)); do
+    escaped="${mirrors[$i]}"
+    escaped="${escaped//\\/\\\\}"
+    escaped="${escaped//\"/\\\"}"
+    suffix=","
+    if (( i == ${#mirrors[@]} - 1 )); then
+      suffix=""
+    fi
+    printf '    "%s"%s\n' "${escaped}" "${suffix}"
+  done
+}
+
 detect_arch() {
   case "$(uname -m)" in
     x86_64 | amd64) echo "amd64" ;;
     aarch64 | arm64) echo "arm64" ;;
     *) die "unsupported architecture: $(uname -m)" ;;
   esac
+}
+
+default_firecracker_url() {
+  local arch="$1"
+  echo "https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/firecracker-${arch}"
+}
+
+default_kernel_url() {
+  local arch="$1"
+  echo "https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/vmlinux.bin-${arch}"
 }
 
 install_packages() {
@@ -119,6 +168,36 @@ install_packages() {
   fi
 
   die "unsupported package manager; install dependencies manually and rerun"
+}
+
+configure_docker() {
+  if [[ -z "${DOCKER_REGISTRY_MIRRORS}" || "${DOCKER_REGISTRY_MIRRORS}" == "none" || "${DOCKER_REGISTRY_MIRRORS}" == "0" ]]; then
+    log "skipping Docker registry mirror configuration"
+    return
+  fi
+  if ! command_exists docker && ! systemctl list-unit-files docker.service >/dev/null 2>&1; then
+    log "Docker is not installed; skipping Docker registry mirror configuration"
+    return
+  fi
+
+  log "configuring Docker registry mirrors: ${DOCKER_REGISTRY_MIRRORS}"
+  mkdir -p /etc/docker
+  {
+    printf '{\n'
+    printf '  "registry-mirrors": [\n'
+    docker_registry_mirrors_json_lines "${DOCKER_REGISTRY_MIRRORS}"
+    printf '  ]\n'
+    printf '}\n'
+  } >/etc/docker/daemon.json
+
+  if command_exists systemctl && systemctl list-unit-files docker.service >/dev/null 2>&1; then
+    systemctl daemon-reload
+    systemctl enable docker >/dev/null 2>&1 || true
+    systemctl restart docker
+    systemctl is-active --quiet docker || die "docker did not become active after restart"
+  else
+    warn "systemctl docker.service not found; restart Docker manually to apply /etc/docker/daemon.json"
+  fi
 }
 
 version_ge() {
@@ -244,6 +323,16 @@ EOF
 
 build_components() {
   local arch="$1"
+  if [[ "$SKIP_BUILD" == "1" ]]; then
+    log "skipping build; using prebuilt components from ${SOURCE_DIR}/bin/linux-${arch}"
+    for cmd in "${COMMANDS[@]}"; do
+      if [[ ! -x "${SOURCE_DIR}/bin/linux-${arch}/${cmd}" ]]; then
+        die "missing prebuilt component: ${SOURCE_DIR}/bin/linux-${arch}/${cmd}"
+      fi
+    done
+    return
+  fi
+
   log "building NovitaBox linux-${arch} components"
   GOPROXY="$GOPROXY" make -C "$SOURCE_DIR" "build-linux-${arch}"
 }
@@ -255,6 +344,9 @@ install_components() {
   for cmd in "${COMMANDS[@]}"; do
     install -m 0755 "${SOURCE_DIR}/bin/linux-${arch}/${cmd}" "${ROOT_DIR}/${cmd}"
   done
+  if [[ -f "${SOURCE_DIR}/scripts/uninstall.sh" ]]; then
+    install -m 0755 "${SOURCE_DIR}/scripts/uninstall.sh" "${ROOT_DIR}/uninstall.sh"
+  fi
 }
 
 install_asset() {
@@ -283,8 +375,12 @@ install_asset() {
 }
 
 install_runtime_assets() {
-  install_asset "firecracker" "$FIRECRACKER_PATH" "$FIRECRACKER_URL" "${ROOT_DIR}/firecracker" 0755
-  install_asset "kernel" "$KERNEL_PATH" "$KERNEL_URL" "${ROOT_DIR}/vmlinux.bin" 0644
+  local arch="$1"
+  local firecracker_url="${FIRECRACKER_URL:-$(default_firecracker_url "$arch")}"
+  local kernel_url="${KERNEL_URL:-$(default_kernel_url "$arch")}"
+
+  install_asset "firecracker" "$FIRECRACKER_PATH" "$firecracker_url" "${ROOT_DIR}/firecracker" 0755
+  install_asset "kernel" "$KERNEL_PATH" "$kernel_url" "${ROOT_DIR}/vmlinux.bin" 0644
 }
 
 write_systemd_units() {
@@ -484,14 +580,17 @@ main() {
   arch="$(detect_arch)"
 
   install_packages
-  ensure_go "$arch"
+  configure_docker
+  if [[ "$SKIP_BUILD" != "1" ]]; then
+    ensure_go "$arch"
+  fi
   prepare_btrfs_root
   verify_reflink
   prepare_kernel_modules
   configure_sysctl
   build_components "$arch"
   install_components "$arch"
-  install_runtime_assets
+  install_runtime_assets "$arch"
   write_systemd_units
   configure_dnsmasq
   configure_caddy
