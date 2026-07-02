@@ -112,6 +112,7 @@ func (m sandboxNetworkManager) Ensure(ctx context.Context, spec *novitaboxv1.Net
 
 	hostVeth := hostVethName(spec.GetNamespaceName())
 	nsVeth := nsVethName(spec.GetNamespaceName())
+	nsPeerVeth := nsPeerVethName(spec.GetNamespaceName())
 	slot, err := networkSlotFromHostAccessIP(m.cfg.Network.HostAccessCIDR, spec.GetHostAccessIp())
 	if err != nil {
 		return err
@@ -125,12 +126,17 @@ func (m sandboxNetworkManager) Ensure(ctx context.Context, spec *novitaboxv1.Net
 		return fmt.Errorf("create netns %s: %w", spec.GetNamespaceName(), err)
 	}
 	_ = runCommand(ctx, "ip", "link", "del", hostVeth)
+	_ = runCommand(ctx, "ip", "link", "del", nsPeerVeth)
+	_ = runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "link", "del", nsVeth)
 
-	if err := runCommand(ctx, "ip", "link", "add", hostVeth, "type", "veth", "peer", "name", nsVeth); err != nil {
+	if err := runCommand(ctx, "ip", "link", "add", hostVeth, "type", "veth", "peer", "name", nsPeerVeth); err != nil {
 		return fmt.Errorf("create veth pair: %w", err)
 	}
-	if err := runCommand(ctx, "ip", "link", "set", nsVeth, "netns", spec.GetNamespaceName()); err != nil {
+	if err := runCommand(ctx, "ip", "link", "set", nsPeerVeth, "netns", spec.GetNamespaceName()); err != nil {
 		return fmt.Errorf("move veth to netns: %w", err)
+	}
+	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "link", "set", nsPeerVeth, "name", nsVeth); err != nil {
+		return fmt.Errorf("rename namespace veth: %w", err)
 	}
 	if err := runCommand(ctx, "ip", "addr", "replace", veth.hostCIDR(), "dev", hostVeth); err != nil {
 		return fmt.Errorf("configure host veth: %w", err)
@@ -325,6 +331,10 @@ func hostVethName(netns string) string {
 
 func nsVethName(netns string) string {
 	return "eth0"
+}
+
+func nsPeerVethName(netns string) string {
+	return shortName("vp-" + netns)
 }
 
 func shortName(name string) string {

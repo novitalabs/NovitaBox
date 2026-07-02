@@ -3,7 +3,7 @@ NOVITABOX_GOMODCACHE := $(CURDIR)/.gomodcache
 NOVITABOX_BUF_CACHE_DIR := $(CURDIR)/.bufcache
 GOPROXY ?= https://goproxy.cn,direct
 
-.PHONY: build build-linux-amd64 build-linux-arm64 test fmt proto tools
+.PHONY: build build-linux-amd64 build-linux-arm64 build-darwin-arm64 build-darwin-amd64 test fmt proto tools clean
 
 COMMANDS := boxapi boxctl boxd boxlet boxproxy boxshim
 
@@ -25,6 +25,18 @@ build-linux-arm64:
 		GOOS=linux GOARCH=arm64 CGO_ENABLED=0 GOPROXY="$(GOPROXY)" GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o "bin/linux-arm64/$$cmd" "./cmd/$$cmd"; \
 	done
 
+build-darwin-arm64:
+	mkdir -p bin/darwin-arm64
+	for cmd in $(COMMANDS); do \
+		GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 GOPROXY="$(GOPROXY)" GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o "bin/darwin-arm64/$$cmd" "./cmd/$$cmd"; \
+	done
+
+build-darwin-amd64:
+	mkdir -p bin/darwin-amd64
+	for cmd in $(COMMANDS); do \
+		GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 GOPROXY="$(GOPROXY)" GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go build -o "bin/darwin-amd64/$$cmd" "./cmd/$$cmd"; \
+	done
+
 test:
 	GOPROXY="$(GOPROXY)" GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go test ./...
 
@@ -37,3 +49,6 @@ proto:
 tools:
 	mkdir -p .bin
 	cd tools && GOBIN="$(CURDIR)/.bin" GOPROXY="$(GOPROXY)" GOCACHE="$(NOVITABOX_GOCACHE)" GOMODCACHE="$(NOVITABOX_GOMODCACHE)" go install tool
+
+clean:
+	rm -rf bin .gocache .gomodcache .bufcache
