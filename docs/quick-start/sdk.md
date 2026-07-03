@@ -13,11 +13,11 @@ pip install novita-sandbox==2.0.5
 For a Caddy-backed local deployment:
 
 ```bash
-export NOVITA_DOMAIN=novitabox.local
+export NOVITA_DOMAIN=novitabox.localhost
 export NOVITA_API_KEY=dummy
 export NOVITA_ACCESS_TOKEN=dummy
 export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-export NO_PROXY=.novitabox.local,localhost,127.0.0.1,::1
+export NO_PROXY=.novitabox.localhost,localhost,127.0.0.1,::1
 ```
 
 If your Python HTTP stack does not use the system CA bundle, point it directly to Caddy's local CA:
@@ -32,7 +32,7 @@ export SSL_CERT_FILE=/usr/local/share/ca-certificates/caddy-local.crt
 import os
 from novita_sandbox import Sandbox
 
-os.environ["NOVITA_DOMAIN"] = "novitabox.local"
+os.environ["NOVITA_DOMAIN"] = "novitabox.localhost"
 os.environ["NOVITA_API_KEY"] = "dummy"
 os.environ["NOVITA_ACCESS_TOKEN"] = "dummy"
 

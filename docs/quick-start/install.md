@@ -17,7 +17,7 @@ The installer uses Btrfs by default.
 From the repository root:
 
 ```bash
-sudo -E scripts/install.sh
+sudo -E scripts/install-linux.sh
 ```
 
 Default values:
@@ -26,7 +26,7 @@ Default values:
 ROOT_DIR=/data/novitabox
 IMAGE_PATH=/data/novitabox.img
 IMAGE_SIZE=50G
-DOMAIN=novitabox.local
+DOMAIN=novitabox.localhost
 ENABLE_DNS=1
 ENABLE_CADDY=1
 ```
@@ -37,8 +37,8 @@ Common overrides:
 ROOT_DIR=/data/novitabox \
 IMAGE_PATH=/data/novitabox.img \
 IMAGE_SIZE=100G \
-DOMAIN=novitabox.local \
-sudo -E scripts/install.sh
+DOMAIN=novitabox.localhost \
+sudo -E scripts/install-linux.sh
 ```
 
 Use already downloaded runtime assets:
@@ -46,19 +46,19 @@ Use already downloaded runtime assets:
 ```bash
 FIRECRACKER_PATH=/root/novitabox/firecracker \
 KERNEL_PATH=/root/novitabox/vmlinux.bin \
-sudo -E scripts/install.sh
+sudo -E scripts/install-linux.sh
 ```
 
 Skip Caddy:
 
 ```bash
-ENABLE_CADDY=0 sudo -E scripts/install.sh
+ENABLE_CADDY=0 sudo -E scripts/install-linux.sh
 ```
 
 Skip DNS:
 
 ```bash
-ENABLE_DNS=0 sudo -E scripts/install.sh
+ENABLE_DNS=0 sudo -E scripts/install-linux.sh
 ```
 
 ## What the Installer Does
@@ -123,7 +123,7 @@ curl http://127.0.0.1:8082/healthz
 If Caddy is enabled:
 
 ```bash
-curl -k https://novitabox.local/health
+curl -k https://novitabox.localhost/health
 ```
 
 List sandboxes:

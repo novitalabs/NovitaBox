@@ -28,12 +28,12 @@ sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
   local_certs
 }
 
-api.novitabox.local {
+api.novitabox.localhost {
   tls internal
   reverse_proxy 127.0.0.1:8080
 }
 
-*.novitabox.local {
+*.novitabox.localhost {
   tls internal
   reverse_proxy 127.0.0.1:8082
 }
@@ -51,10 +51,10 @@ sudo update-ca-certificates
 ## Routing Model
 
 ```text
-https://novitabox.local
+https://novitabox.localhost
   -> 127.0.0.1:8080
 
-https://<sandbox-or-port>.novitabox.local
+https://<sandbox-or-port>.novitabox.localhost
   -> 127.0.0.1:8082
 ```
 
@@ -63,7 +63,7 @@ https://<sandbox-or-port>.novitabox.local
 ## Health Checks
 
 ```bash
-curl -k https://novitabox.local/health
+curl -k https://novitabox.localhost/health
 curl http://127.0.0.1:8082/healthz
 ```
 

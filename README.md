@@ -90,8 +90,8 @@ sudo apt-get install -y dnsmasq caddy
 sudo tee /etc/dnsmasq.d/novitabox.conf >/dev/null <<'EOF'
 listen-address=127.0.0.1
 bind-interfaces
-address=/.novitabox.local/127.0.0.1
-address=/.novitabox.local/::1
+address=/novitabox.localhost/127.0.0.1
+address=/.novitabox.localhost/127.0.0.1
 EOF
 sudo systemctl restart dnsmasq
 
@@ -100,12 +100,12 @@ sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
   local_certs
 }
 
-novitabox.local {
+novitabox.localhost {
   tls internal
   reverse_proxy 127.0.0.1:8080
 }
 
-*.novitabox.local {
+*.novitabox.localhost {
   tls internal
   reverse_proxy 127.0.0.1:8082
 }

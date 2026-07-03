@@ -9,7 +9,7 @@ http://127.0.0.1:8080
 When Caddy is enabled:
 
 ```text
-https://novitabox.local
+https://novitabox.localhost
 ```
 
 ## Health

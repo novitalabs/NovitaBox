@@ -27,7 +27,7 @@ func TestSandboxIDFromRequestSupportsHeaderAndHost(t *testing.T) {
 		t.Fatalf("sandboxIDFromRequest(query) = %q, want sbx-query", got)
 	}
 
-	req = httptest.NewRequest("POST", "https://49983-sbx-host.novitabox.local/process.Process/Start", nil)
+	req = httptest.NewRequest("POST", "https://49983-sbx-host.novitabox.localhost/process.Process/Start", nil)
 	if got := sandboxIDFromRequest(req); got != "sbx-host" {
 		t.Fatalf("sandboxIDFromRequest(host) = %q, want sbx-host", got)
 	}

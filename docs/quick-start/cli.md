@@ -10,10 +10,10 @@ npm install -g novita-sandbox-cli@2.0.5
 
 ## Local HTTPS Endpoint
 
-If you enabled Caddy in `scripts/install.sh`, the local API is available at:
+If you enabled Caddy in `scripts/install-linux.sh`, the local API is available at:
 
 ```text
-https://novitabox.local
+https://novitabox.localhost
 ```
 
 The Caddy local CA is installed at:
@@ -26,8 +26,8 @@ The Caddy local CA is installed at:
 
 ```bash
 export NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/caddy-local.crt
-export NO_PROXY=.novitabox.local,localhost,127.0.0.1,::1
-export NOVITA_DOMAIN=novitabox.local
+export NO_PROXY=.novitabox.localhost,localhost,127.0.0.1,::1
+export NOVITA_DOMAIN=novitabox.localhost
 export NOVITA_API_KEY=dummy
 export NOVITA_ACCESS_TOKEN=dummy
 ```
