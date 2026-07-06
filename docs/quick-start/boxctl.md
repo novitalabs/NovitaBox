@@ -5,7 +5,7 @@
 - `boxapi` for lifecycle and artifact APIs, default `http://127.0.0.1:8080`
 - `boxproxy` for process and terminal traffic, default `http://127.0.0.1:8082`
 
-If NovitaBox is installed by `scripts/install.sh`, the binary is installed at:
+If NovitaBox is installed by `scripts/install-linux.sh`, the binary is installed at:
 
 ```bash
 /data/novitabox/boxctl

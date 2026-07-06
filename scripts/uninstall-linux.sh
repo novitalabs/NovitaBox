@@ -4,15 +4,15 @@ set -Eeuo pipefail
 # Remove a Linux NovitaBox installation.
 #
 # Default usage:
-#   sudo scripts/uninstall.sh
+#   sudo scripts/uninstall-linux.sh
 #
 # Common overrides:
-#   ROOT_DIR=/data/novitabox IMAGE_PATH=/data/novitabox.img sudo -E scripts/uninstall.sh
-#   KEEP_DATA=1 sudo -E scripts/uninstall.sh
+#   ROOT_DIR=/data/novitabox IMAGE_PATH=/data/novitabox.img sudo -E scripts/uninstall-linux.sh
+#   KEEP_DATA=1 sudo -E scripts/uninstall-linux.sh
 
 ROOT_DIR="${ROOT_DIR:-/data/novitabox}"
 IMAGE_PATH="${IMAGE_PATH:-/data/novitabox.img}"
-DOMAIN="${DOMAIN:-novitabox.local}"
+DOMAIN="${DOMAIN:-novitabox.localhost}"
 KEEP_DATA="${KEEP_DATA:-0}"
 KEEP_PACKAGES="${KEEP_PACKAGES:-1}"
 FORCE="${FORCE:-0}"
@@ -35,7 +35,7 @@ die() {
 
 need_root() {
   if [[ "${EUID}" -ne 0 ]]; then
-    die "run as root, for example: sudo -E scripts/uninstall.sh"
+    die "run as root, for example: sudo -E scripts/uninstall-linux.sh"
   fi
 }
 
@@ -199,6 +199,7 @@ unmount_root() {
 remove_data() {
   if [[ "${KEEP_DATA}" == "1" ]]; then
     log "KEEP_DATA=1; keeping ${ROOT_DIR} and ${IMAGE_PATH}"
+    rm -f "${ROOT_DIR}/uninstall.sh" /usr/local/bin/novitabox-uninstall
     return
   fi
 
@@ -206,6 +207,7 @@ remove_data() {
   unmount_root
 
   log "removing NovitaBox data"
+  rm -f "${ROOT_DIR}/uninstall.sh" /usr/local/bin/novitabox-uninstall
   rm -rf "${ROOT_DIR}"
   rm -f "${IMAGE_PATH}"
 

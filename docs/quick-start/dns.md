@@ -3,8 +3,8 @@
 NovitaBox SDK compatibility works best when all local requests resolve under one domain, for example:
 
 ```text
-novitabox.local
-*.novitabox.local
+novitabox.localhost
+*.novitabox.localhost
 ```
 
 The simple single-host setup maps the whole domain to loopback.
@@ -18,8 +18,8 @@ bind-interfaces
 no-resolv
 server=223.5.5.5
 server=202.96.209.133
-address=/.novitabox.local/127.0.0.1
-address=/.novitabox.local/::1
+address=/novitabox.localhost/127.0.0.1
+address=/.novitabox.localhost/127.0.0.1
 EOF
 
 sudo systemctl restart dnsmasq
@@ -34,7 +34,7 @@ sudo mkdir -p /etc/systemd/resolved.conf.d
 sudo tee /etc/systemd/resolved.conf.d/novitabox.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=127.0.0.1
-Domains=~novitabox.local
+Domains=~novitabox.localhost
 EOF
 
 sudo systemctl restart systemd-resolved
@@ -43,9 +43,9 @@ sudo systemctl restart systemd-resolved
 ## Verify
 
 ```bash
-getent hosts novitabox.local
-getent hosts api.novitabox.local
-getent hosts sbx-test.novitabox.local
+getent hosts novitabox.localhost
+getent hosts api.novitabox.localhost
+getent hosts sbx-test.novitabox.localhost
 ```
 
-All of them should resolve to `127.0.0.1` or `::1`.
+All of them should resolve to `127.0.0.1`.

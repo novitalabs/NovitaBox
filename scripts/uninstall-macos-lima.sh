@@ -29,7 +29,7 @@ LIMA_USER="${LIMA_USER:-novitabox}"
 VM_INSTALL_DIR="${VM_INSTALL_DIR:-/home/${LIMA_USER}/novitabox-install}"
 ROOT_DIR="${ROOT_DIR:-/data/novitabox}"
 IMAGE_PATH="${IMAGE_PATH:-/data/novitabox.img}"
-DOMAIN="${DOMAIN:-novitabox.local}"
+DOMAIN="${DOMAIN:-novitabox.localhost}"
 
 KEEP_VM="${KEEP_VM:-0}"
 KEEP_TEMPLATE="${KEEP_TEMPLATE:-0}"
@@ -149,10 +149,11 @@ run_linux_uninstaller_in_vm() {
   fi
 
   log "starting ${VM_NAME} for in-VM cleanup"
-  limactl start "${VM_NAME}" >/dev/null 2>&1 || true
+  limactl start --tty=false "${VM_NAME}" >/dev/null 2>&1 || true
 
-  if ! limactl shell "${VM_NAME}" -- test -f "${VM_INSTALL_DIR}/scripts/uninstall.sh" >/dev/null 2>&1; then
-    warn "in-VM uninstaller not found at ${VM_INSTALL_DIR}/scripts/uninstall.sh; removing VM directly"
+  local uninstaller="${VM_INSTALL_DIR}/scripts/uninstall-linux.sh"
+  if ! limactl shell "${VM_NAME}" -- test -f "${uninstaller}" >/dev/null 2>&1; then
+    warn "in-VM uninstaller not found; removing VM directly"
     return
   fi
 
@@ -163,7 +164,7 @@ run_linux_uninstaller_in_vm() {
       IMAGE_PATH='${IMAGE_PATH}' \
       DOMAIN='${DOMAIN}' \
       FORCE=1 \
-      bash '${VM_INSTALL_DIR}/scripts/uninstall.sh'
+      bash '${uninstaller}'
   " || warn "in-VM uninstaller failed; continuing with Lima cleanup"
 }
 

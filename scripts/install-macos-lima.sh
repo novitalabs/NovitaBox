@@ -3,8 +3,8 @@ set -Eeuo pipefail
 
 # macOS Lima installer for NovitaBox.
 #
-# This script prepares a Lima Linux VM on macOS, builds Linux binaries
-# locally, uploads only the binaries and installer into the VM, then runs the
+# This script prepares a Lima Linux VM on macOS, builds or uses prebuilt Linux
+# binaries, uploads only the binaries and installer into the VM, then runs the
 # Linux installer inside the VM.
 #
 # Usage from repository root:
@@ -16,8 +16,9 @@ set -Eeuo pipefail
 #   LIMA_IMAGE_PATH=$HOME/.lima/_templates/ubuntu-24.04-server-cloudimg-arm64.img scripts/install-macos-lima.sh
 #   ENABLE_MAC_DNS=1 ENABLE_MAC_PROXY=1 scripts/install-macos-lima.sh
 #   ENABLE_VM_DNS=1 ENABLE_VM_CADDY=1 scripts/install-macos-lima.sh
-#   DOCKER_REGISTRY_MIRRORS=https://docker.m.daocloud.io,https://docker.1ms.run scripts/install-macos-lima.sh
+#   CONFIGURE_DOCKER_MIRRORS=1 DOCKER_REGISTRY_MIRRORS=https://docker.m.daocloud.io,https://docker.1ms.run scripts/install-macos-lima.sh
 #   FIRECRACKER_URL=https://.../firecracker-arm64 KERNEL_URL=https://.../vmlinux.bin-arm64 scripts/install-macos-lima.sh
+#   SKIP_BUILD=1 scripts/install-macos-lima.sh
 
 VM_NAME="${VM_NAME:-novitabox}"
 LIMA_TEMPLATE_NAME="${LIMA_TEMPLATE_NAME:-ubuntu-24.04-novitabox}"
@@ -44,13 +45,15 @@ VM_INSTALL_DIR="${VM_INSTALL_DIR:-/home/${LIMA_USER}/novitabox-install}"
 ROOT_DIR="${ROOT_DIR:-/data/novitabox}"
 IMAGE_PATH="${IMAGE_PATH:-/data/novitabox.img}"
 IMAGE_SIZE="${IMAGE_SIZE:-50G}"
-DOMAIN="${DOMAIN:-novitabox.local}"
+DOMAIN="${DOMAIN:-novitabox.localhost}"
 ENABLE_MAC_DNS="${ENABLE_MAC_DNS:-${ENABLE_DNS:-0}}"
 ENABLE_MAC_PROXY="${ENABLE_MAC_PROXY:-${ENABLE_CADDY:-0}}"
 ENABLE_VM_DNS="${ENABLE_VM_DNS:-0}"
 ENABLE_VM_CADDY="${ENABLE_VM_CADDY:-0}"
 REQUIRE_KVM="${REQUIRE_KVM:-1}"
 GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
+CONFIGURE_DOCKER_MIRRORS="${CONFIGURE_DOCKER_MIRRORS:-0}"
 DOCKER_REGISTRY_MIRRORS="${DOCKER_REGISTRY_MIRRORS:-https://docker.m.daocloud.io,https://docker.1ms.run}"
 
 SOURCE_DIR="${SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -118,6 +121,9 @@ docker_registry_mirrors_json_lines() {
 
 docker_registry_mirrors_provision_block() {
   local json_lines
+  if [[ "${CONFIGURE_DOCKER_MIRRORS}" != "1" ]]; then
+    return
+  fi
   json_lines="$(docker_registry_mirrors_json_lines "$1")"
   if [[ -z "${json_lines}" ]]; then
     return
@@ -206,7 +212,7 @@ need_build_tools() {
 }
 
 need_source_dir() {
-  if [[ ! -f "${SOURCE_DIR}/scripts/install.sh" ]]; then
+  if [[ ! -f "${SOURCE_DIR}/scripts/install-linux.sh" ]]; then
     die "SOURCE_DIR must point to the NovitaBox repository root: ${SOURCE_DIR}"
   fi
 }
@@ -341,7 +347,9 @@ print_config() {
   LIMA_IMAGE_URL      ${LIMA_IMAGE_URL}
   FIRECRACKER_PATH    ${FIRECRACKER_PATH}
   KERNEL_PATH         ${KERNEL_PATH}
+  CONFIG_DOCKER_MIRR  ${CONFIGURE_DOCKER_MIRRORS}
   DOCKER_MIRRORS      ${DOCKER_REGISTRY_MIRRORS}
+  SKIP_BUILD          ${SKIP_BUILD}
   ENABLE_MAC_DNS      ${ENABLE_MAC_DNS}
   ENABLE_MAC_PROXY    ${ENABLE_MAC_PROXY}
   MAC_DNSMASQ_MAIN    ${MAC_DNSMASQ_MAIN_CONF:-<disabled>}
@@ -358,6 +366,20 @@ EOF
 }
 
 build_local_binaries() {
+  if [[ "${SKIP_BUILD}" == "1" ]]; then
+    log "skipping local build; using prebuilt components from ${SOURCE_DIR}/bin/linux-${BUILD_ARCH} and ${SOURCE_DIR}/bin/darwin-${DARWIN_ARCH}"
+    local cmd
+    for cmd in boxapi boxctl boxd boxlet boxproxy boxshim; do
+      if [[ ! -x "${SOURCE_DIR}/bin/linux-${BUILD_ARCH}/${cmd}" ]]; then
+        die "missing linux-${BUILD_ARCH} binary: ${SOURCE_DIR}/bin/linux-${BUILD_ARCH}/${cmd}"
+      fi
+      if [[ ! -x "${SOURCE_DIR}/bin/darwin-${DARWIN_ARCH}/${cmd}" ]]; then
+        die "missing darwin-${DARWIN_ARCH} binary: ${SOURCE_DIR}/bin/darwin-${DARWIN_ARCH}/${cmd}"
+      fi
+    done
+    return
+  fi
+
   log "building linux-${BUILD_ARCH} components locally"
   make -C "${SOURCE_DIR}" "build-linux-${BUILD_ARCH}"
   log "building darwin-${DARWIN_ARCH} components locally"
@@ -490,12 +512,12 @@ EOF
 start_lima_vm() {
   if limactl list --format '{{.Name}}' | grep -Fxq "${VM_NAME}"; then
     log "Lima VM ${VM_NAME} already exists"
-    limactl start "${VM_NAME}" >/dev/null || true
+    limactl start --tty=false "${VM_NAME}" >/dev/null || true
     return
   fi
 
   log "starting Lima VM ${VM_NAME} from template:${LIMA_TEMPLATE_NAME}"
-  limactl start --name="${VM_NAME}" "template:${LIMA_TEMPLATE_NAME}"
+  limactl start --tty=false --progress --name="${VM_NAME}" "template:${LIMA_TEMPLATE_NAME}"
 }
 
 wait_lima_vm() {
@@ -555,8 +577,6 @@ configure_macos_dns() {
 # Managed by NovitaBox.
 address=/${DOMAIN}/127.0.0.1
 address=/.${DOMAIN}/127.0.0.1
-address=/${DOMAIN}/::1
-address=/.${DOMAIN}/::1
 EOF
 
   sudo mkdir -p "${MAC_RESOLVER_DIR}"
@@ -606,10 +626,10 @@ sync_install_payload_to_vm() {
   payload_dir="$(mktemp -d "${TMPDIR:-/tmp}/novitabox-lima-payload.XXXXXX")"
 
   mkdir -p "${payload_dir}/bin/linux-${BUILD_ARCH}" "${payload_dir}/scripts" "${payload_dir}/assets"
-  cp "${SOURCE_DIR}/scripts/install.sh" "${payload_dir}/scripts/install.sh"
-  cp "${SOURCE_DIR}/scripts/uninstall.sh" "${payload_dir}/scripts/uninstall.sh"
-  chmod +x "${payload_dir}/scripts/install.sh"
-  chmod +x "${payload_dir}/scripts/uninstall.sh"
+  cp "${SOURCE_DIR}/scripts/install-linux.sh" "${payload_dir}/scripts/install-linux.sh"
+  cp "${SOURCE_DIR}/scripts/uninstall-linux.sh" "${payload_dir}/scripts/uninstall-linux.sh"
+  chmod +x "${payload_dir}/scripts/install-linux.sh"
+  chmod +x "${payload_dir}/scripts/uninstall-linux.sh"
   cp "${FIRECRACKER_PATH}" "${payload_dir}/assets/firecracker"
   cp "${KERNEL_PATH}" "${payload_dir}/assets/vmlinux.bin"
   chmod 0755 "${payload_dir}/assets/firecracker"
@@ -651,7 +671,7 @@ run_linux_installer() {
       KERNEL_PATH='${VM_INSTALL_DIR}/assets/vmlinux.bin' \
       SKIP_BUILD=1 \
       SOURCE_DIR='${VM_INSTALL_DIR}' \
-      bash scripts/install.sh
+      bash scripts/install-linux.sh
   "
 }
 
@@ -698,7 +718,9 @@ EOF
 main() {
   need_macos
   need_lima
-  need_build_tools
+  if [[ "${SKIP_BUILD}" != "1" ]]; then
+    need_build_tools
+  fi
   need_source_dir
   resolve_arch_config
   resolve_macos_service_paths

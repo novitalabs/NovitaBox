@@ -4,23 +4,25 @@ set -Eeuo pipefail
 # One-command NovitaBox installer for a single Linux host.
 #
 # Default usage from the repository root:
-#   sudo scripts/install.sh
+#   sudo scripts/install-linux.sh
 #
 # Common overrides:
-#   ROOT_DIR=/data/novitabox IMAGE_SIZE=100G DOMAIN=novitabox.local sudo -E scripts/install.sh
-#   FIRECRACKER_URL=https://.../firecracker-amd64 KERNEL_URL=https://.../vmlinux.bin-amd64 sudo -E scripts/install.sh
-#   FIRECRACKER_PATH=/path/to/firecracker KERNEL_PATH=/path/to/vmlinux.bin sudo -E scripts/install.sh
-#   SKIP_BUILD=1 SOURCE_DIR=/path/to/prebuilt-layout sudo -E scripts/install.sh
+#   ROOT_DIR=/data/novitabox IMAGE_SIZE=100G DOMAIN=novitabox.localhost sudo -E scripts/install-linux.sh
+#   FIRECRACKER_URL=https://.../firecracker-amd64 KERNEL_URL=https://.../vmlinux.bin-amd64 sudo -E scripts/install-linux.sh
+#   FIRECRACKER_PATH=/path/to/firecracker KERNEL_PATH=/path/to/vmlinux.bin sudo -E scripts/install-linux.sh
+#   CONFIGURE_DOCKER_MIRRORS=1 DOCKER_REGISTRY_MIRRORS=https://docker.m.daocloud.io,https://docker.1ms.run sudo -E scripts/install-linux.sh
+#   SKIP_BUILD=1 SOURCE_DIR=/path/to/prebuilt-layout sudo -E scripts/install-linux.sh
 
 ROOT_DIR="${ROOT_DIR:-/data/novitabox}"
 IMAGE_PATH="${IMAGE_PATH:-/data/novitabox.img}"
 IMAGE_SIZE="${IMAGE_SIZE:-50G}"
-DOMAIN="${DOMAIN:-novitabox.local}"
+DOMAIN="${DOMAIN:-novitabox.localhost}"
 RELEASE_VERSION="${RELEASE_VERSION:-v0.0.1}"
 SOURCE_DIR="${SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 INSTALL_GO="${INSTALL_GO:-auto}"
 GO_VERSION="${GO_VERSION:-1.26.4}"
 GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
+CONFIGURE_DOCKER_MIRRORS="${CONFIGURE_DOCKER_MIRRORS:-0}"
 DOCKER_REGISTRY_MIRRORS="${DOCKER_REGISTRY_MIRRORS:-https://docker.m.daocloud.io,https://docker.1ms.run}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 ENABLE_DNS="${ENABLE_DNS:-1}"
@@ -52,7 +54,7 @@ die() {
 
 need_root() {
   if [[ "${EUID}" -ne 0 ]]; then
-    die "run as root, for example: sudo -E scripts/install.sh"
+    die "run as root, for example: sudo -E scripts/install-linux.sh"
   fi
 }
 
@@ -171,12 +173,20 @@ install_packages() {
 }
 
 configure_docker() {
+  if [[ "${CONFIGURE_DOCKER_MIRRORS}" != "1" ]]; then
+    log "skipping Docker registry mirror configuration; set CONFIGURE_DOCKER_MIRRORS=1 to enable it"
+    return
+  fi
   if [[ -z "${DOCKER_REGISTRY_MIRRORS}" || "${DOCKER_REGISTRY_MIRRORS}" == "none" || "${DOCKER_REGISTRY_MIRRORS}" == "0" ]]; then
     log "skipping Docker registry mirror configuration"
     return
   fi
   if ! command_exists docker && ! systemctl list-unit-files docker.service >/dev/null 2>&1; then
     log "Docker is not installed; skipping Docker registry mirror configuration"
+    return
+  fi
+  if [[ -f /etc/docker/daemon.json ]]; then
+    log "Docker daemon.json already exists; leaving existing Docker configuration unchanged"
     return
   fi
 
@@ -344,9 +354,7 @@ install_components() {
   for cmd in "${COMMANDS[@]}"; do
     install -m 0755 "${SOURCE_DIR}/bin/linux-${arch}/${cmd}" "${ROOT_DIR}/${cmd}"
   done
-  if [[ -f "${SOURCE_DIR}/scripts/uninstall.sh" ]]; then
-    install -m 0755 "${SOURCE_DIR}/scripts/uninstall.sh" "${ROOT_DIR}/uninstall.sh"
-  fi
+  rm -f "${ROOT_DIR}/uninstall.sh"
 }
 
 install_asset() {
@@ -461,8 +469,8 @@ bind-interfaces
 no-resolv
 server=1.1.1.1
 server=8.8.8.8
+address=/${DOMAIN}/127.0.0.1
 address=/.${DOMAIN}/127.0.0.1
-address=/.${DOMAIN}/::1
 EOF
   systemctl enable --now dnsmasq
   systemctl restart dnsmasq

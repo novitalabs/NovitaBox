@@ -68,8 +68,9 @@ func main() {
 
 func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "sandbox",
-		Short: "Manage sandboxes",
+		Use:     "sandbox",
+		Aliases: []string{"sbx"},
+		Short:   "Manage sandboxes",
 	}
 
 	var createTemplateID string
@@ -137,8 +138,9 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 
 func newTemplateCommand(apiAddr *string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "template",
-		Short: "Manage templates",
+		Use:     "template",
+		Aliases: []string{"tpl"},
+		Short:   "Manage templates",
 	}
 
 	cmd.AddCommand(newTemplateCreateCommand(apiAddr))
@@ -306,8 +308,9 @@ func newTemplateConvertCommand(apiAddr *string) *cobra.Command {
 
 func newImageCommand(apiAddr *string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "image",
-		Short: "Manage images",
+		Use:     "image",
+		Aliases: []string{"img"},
+		Short:   "Manage images",
 	}
 
 	createCmd := newImageCreateCommand(apiAddr)
