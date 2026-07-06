@@ -12,13 +12,31 @@ set -Eeuo pipefail
 # Common overrides:
 #   RELEASE_VERSION=v0.0.1 scripts/install-release.sh
 #   RELEASE_BASE_URL=https://github.com/novitalabs/NovitaBox/releases/download/v0.0.1 scripts/install-release.sh
+#   RUNTIME_ASSET_VERSION=v0.0.1 scripts/install-release.sh
+#   SOURCE_REF=main scripts/install-release.sh
 #   DOWNLOAD_DIR=/tmp/novitabox-release scripts/install-release.sh
 #   INSTALL_HOMEBREW=0 INSTALL_LIMA=0 scripts/install-release.sh
 
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+DEFAULT_SOURCE_DIR=""
+if [[ -n "${SCRIPT_SOURCE}" && -f "${SCRIPT_SOURCE}" ]]; then
+  CANDIDATE_SOURCE_DIR="$(cd "$(dirname "${SCRIPT_SOURCE}")/.." && pwd)"
+  if [[ -f "${CANDIDATE_SOURCE_DIR}/scripts/install-linux.sh" ]]; then
+    DEFAULT_SOURCE_DIR="${CANDIDATE_SOURCE_DIR}"
+  fi
+fi
+
 RELEASE_VERSION="${RELEASE_VERSION:-v0.0.1}"
 RELEASE_BASE_URL="${RELEASE_BASE_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}}"
-SOURCE_DIR="${SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-DOWNLOAD_DIR="${DOWNLOAD_DIR:-${SOURCE_DIR}/.release}"
+RUNTIME_ASSET_VERSION="${RUNTIME_ASSET_VERSION:-v0.0.1}"
+SOURCE_REF="${SOURCE_REF:-main}"
+SOURCE_BASE_URL="${SOURCE_BASE_URL:-https://raw.githubusercontent.com/novitalabs/NovitaBox/${SOURCE_REF}}"
+SOURCE_DIR="${SOURCE_DIR:-${DEFAULT_SOURCE_DIR}}"
+if [[ -n "${SOURCE_DIR}" ]]; then
+  DOWNLOAD_DIR="${DOWNLOAD_DIR:-${SOURCE_DIR}/.release}"
+else
+  DOWNLOAD_DIR="${DOWNLOAD_DIR:-${TMPDIR:-/tmp}/novitabox-release-download}"
+fi
 FORCE_DOWNLOAD="${FORCE_DOWNLOAD:-0}"
 INSTALL_HOMEBREW="${INSTALL_HOMEBREW:-1}"
 INSTALL_LIMA="${INSTALL_LIMA:-1}"
@@ -69,6 +87,34 @@ need_tools() {
   fi
   if ! command_exists tar; then
     die "tar is required"
+  fi
+}
+
+download_source_script() {
+  local name="$1"
+  local path="${SOURCE_DIR}/scripts/${name}"
+  local url="${SOURCE_BASE_URL}/scripts/${name}"
+
+  log "downloading ${url}"
+  curl -fL --retry 3 --retry-delay 2 -o "${path}" "${url}"
+  chmod 0755 "${path}"
+}
+
+ensure_source_layout() {
+  if [[ -n "${SOURCE_DIR}" && -f "${SOURCE_DIR}/scripts/install-linux.sh" && -f "${SOURCE_DIR}/scripts/install-macos-lima.sh" ]]; then
+    return
+  fi
+
+  SOURCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/novitabox-install.XXXXXX")"
+  mkdir -p "${SOURCE_DIR}/scripts"
+  log "preparing temporary installer source in ${SOURCE_DIR}"
+  download_source_script "install-linux.sh"
+  download_source_script "install-macos-lima.sh"
+  download_source_script "uninstall-linux.sh"
+  download_source_script "uninstall-macos-lima.sh"
+
+  if [[ "${DOWNLOAD_DIR}" == "${TMPDIR:-/tmp}/novitabox-release-download" ]]; then
+    DOWNLOAD_DIR="${SOURCE_DIR}/.release"
   fi
 }
 
@@ -207,7 +253,7 @@ install_linux() {
   local arch="$1"
   install_components_from_archive "linux" "${arch}"
   log "running Linux installer with prebuilt components"
-  SKIP_BUILD=1 SOURCE_DIR="${SOURCE_DIR}" bash "${SOURCE_DIR}/scripts/install-linux.sh"
+  SKIP_BUILD=1 SOURCE_DIR="${SOURCE_DIR}" RELEASE_VERSION="${RUNTIME_ASSET_VERSION}" bash "${SOURCE_DIR}/scripts/install-linux.sh"
 }
 
 install_macos_lima() {
@@ -222,11 +268,14 @@ install_macos_lima() {
   install_components_from_archive "linux" "${linux_arch}"
 
   log "running macOS Lima installer with prebuilt components"
-  SKIP_BUILD=1 SOURCE_DIR="${SOURCE_DIR}" bash "${SOURCE_DIR}/scripts/install-macos-lima.sh"
+  SKIP_BUILD=1 SOURCE_DIR="${SOURCE_DIR}" RELEASE_VERSION="${RUNTIME_ASSET_VERSION}" bash "${SOURCE_DIR}/scripts/install-macos-lima.sh"
 }
 
 main() {
+  log "starting NovitaBox release installer ${RELEASE_VERSION}"
+  log "runtime assets version ${RUNTIME_ASSET_VERSION}"
   need_tools
+  ensure_source_layout
 
   local os arch
   os="$(detect_os)"
