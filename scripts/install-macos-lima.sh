@@ -3,8 +3,8 @@ set -Eeuo pipefail
 
 # macOS Lima installer for NovitaBox.
 #
-# This script prepares a Lima Linux VM on macOS, builds Linux binaries
-# locally, uploads only the binaries and installer into the VM, then runs the
+# This script prepares a Lima Linux VM on macOS, builds or uses prebuilt Linux
+# binaries, uploads only the binaries and installer into the VM, then runs the
 # Linux installer inside the VM.
 #
 # Usage from repository root:
@@ -18,6 +18,7 @@ set -Eeuo pipefail
 #   ENABLE_VM_DNS=1 ENABLE_VM_CADDY=1 scripts/install-macos-lima.sh
 #   CONFIGURE_DOCKER_MIRRORS=1 DOCKER_REGISTRY_MIRRORS=https://docker.m.daocloud.io,https://docker.1ms.run scripts/install-macos-lima.sh
 #   FIRECRACKER_URL=https://.../firecracker-arm64 KERNEL_URL=https://.../vmlinux.bin-arm64 scripts/install-macos-lima.sh
+#   SKIP_BUILD=1 scripts/install-macos-lima.sh
 
 VM_NAME="${VM_NAME:-novitabox}"
 LIMA_TEMPLATE_NAME="${LIMA_TEMPLATE_NAME:-ubuntu-24.04-novitabox}"
@@ -51,6 +52,7 @@ ENABLE_VM_DNS="${ENABLE_VM_DNS:-0}"
 ENABLE_VM_CADDY="${ENABLE_VM_CADDY:-0}"
 REQUIRE_KVM="${REQUIRE_KVM:-1}"
 GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
 CONFIGURE_DOCKER_MIRRORS="${CONFIGURE_DOCKER_MIRRORS:-0}"
 DOCKER_REGISTRY_MIRRORS="${DOCKER_REGISTRY_MIRRORS:-https://docker.m.daocloud.io,https://docker.1ms.run}"
 
@@ -347,6 +349,7 @@ print_config() {
   KERNEL_PATH         ${KERNEL_PATH}
   CONFIG_DOCKER_MIRR  ${CONFIGURE_DOCKER_MIRRORS}
   DOCKER_MIRRORS      ${DOCKER_REGISTRY_MIRRORS}
+  SKIP_BUILD          ${SKIP_BUILD}
   ENABLE_MAC_DNS      ${ENABLE_MAC_DNS}
   ENABLE_MAC_PROXY    ${ENABLE_MAC_PROXY}
   MAC_DNSMASQ_MAIN    ${MAC_DNSMASQ_MAIN_CONF:-<disabled>}
@@ -363,6 +366,20 @@ EOF
 }
 
 build_local_binaries() {
+  if [[ "${SKIP_BUILD}" == "1" ]]; then
+    log "skipping local build; using prebuilt components from ${SOURCE_DIR}/bin/linux-${BUILD_ARCH} and ${SOURCE_DIR}/bin/darwin-${DARWIN_ARCH}"
+    local cmd
+    for cmd in boxapi boxctl boxd boxlet boxproxy boxshim; do
+      if [[ ! -x "${SOURCE_DIR}/bin/linux-${BUILD_ARCH}/${cmd}" ]]; then
+        die "missing linux-${BUILD_ARCH} binary: ${SOURCE_DIR}/bin/linux-${BUILD_ARCH}/${cmd}"
+      fi
+      if [[ ! -x "${SOURCE_DIR}/bin/darwin-${DARWIN_ARCH}/${cmd}" ]]; then
+        die "missing darwin-${DARWIN_ARCH} binary: ${SOURCE_DIR}/bin/darwin-${DARWIN_ARCH}/${cmd}"
+      fi
+    done
+    return
+  fi
+
   log "building linux-${BUILD_ARCH} components locally"
   make -C "${SOURCE_DIR}" "build-linux-${BUILD_ARCH}"
   log "building darwin-${DARWIN_ARCH} components locally"
@@ -701,7 +718,9 @@ EOF
 main() {
   need_macos
   need_lima
-  need_build_tools
+  if [[ "${SKIP_BUILD}" != "1" ]]; then
+    need_build_tools
+  fi
   need_source_dir
   resolve_arch_config
   resolve_macos_service_paths
