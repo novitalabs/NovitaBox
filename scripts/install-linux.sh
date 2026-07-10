@@ -36,6 +36,7 @@ FIRECRACKER_URL="${FIRECRACKER_URL:-}"
 KERNEL_URL="${KERNEL_URL:-}"
 FIRECRACKER_PATH="${FIRECRACKER_PATH:-}"
 KERNEL_PATH="${KERNEL_PATH:-}"
+CURL_PROXY="${CURL_PROXY:-${https_proxy:-${HTTPS_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}}}"
 
 COMMANDS=(boxapi boxctl boxd boxlet boxproxy boxshim)
 
@@ -69,6 +70,26 @@ need_no_spaces() {
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+curl_retry_all_errors_args=()
+if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+  curl_retry_all_errors_args=(--retry-all-errors)
+fi
+curl_proxy_args=()
+if [[ -n "${CURL_PROXY}" ]]; then
+  curl_proxy_args=(--proxy "${CURL_PROXY}")
+fi
+
+download_to_tmp() {
+  local url="$1"
+  local tmp="$2"
+
+  rm -f "${tmp}"
+  if ! curl -fL --http1.1 --retry 5 "${curl_retry_all_errors_args[@]}" "${curl_proxy_args[@]}" --retry-delay 2 -o "${tmp}" "${url}"; then
+    rm -f "${tmp}"
+    return 1
+  fi
 }
 
 trim_space() {
@@ -377,7 +398,9 @@ install_asset() {
   fi
 
   log "downloading ${name} from ${url}"
-  curl -fL "$url" -o "${dest}.tmp"
+  if ! download_to_tmp "$url" "${dest}.tmp"; then
+    die "download ${name} failed"
+  fi
   chmod "$mode" "${dest}.tmp"
   mv -f "${dest}.tmp" "$dest"
 }
