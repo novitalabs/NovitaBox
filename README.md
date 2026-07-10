@@ -36,6 +36,51 @@ SDK** to write your agent code once, then run it locally with NovitaBox or in No
 
 ## 🚀 Quick Start
 
+### Recommended: One-Command Install
+
+Install the latest release components without building from source:
+
+**Linux**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=v0.0.2 sudo -E bash
+```
+
+**macOS with Lima**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=v0.0.2 bash
+```
+
+The release installer detects your operating system and CPU architecture, downloads the matching prebuilt components,
+and runs the platform installer. On macOS it downloads both Darwin binaries for the host and Linux binaries for the Lima
+VM. Firecracker and the guest kernel are kept on the stable `v0.0.1` runtime assets by default.
+
+Linux installs configure local DNS and HTTPS proxy by default. On macOS, enable host DNS and proxy explicitly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | \
+  RELEASE_VERSION=v0.0.2 ENABLE_MAC_DNS=1 ENABLE_MAC_PROXY=1 bash
+```
+
+After installation:
+
+```bash
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8082/healthz
+```
+
+If DNS/proxy is enabled:
+
+```bash
+curl -k https://novitabox.localhost/health
+curl -k https://test.novitabox.localhost/healthz
+```
+
+> Full installation options: see [Installation](docs/quick-start/install.md).
+
+### Build from Source Manually
+
 #### Prepare the filesystem
 
 NovitaBox requires a filesystem that supports reflink copies, such as XFS or Btrfs, to store templates, snapshots, and related runtime data.

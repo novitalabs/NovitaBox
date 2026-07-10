@@ -1,6 +1,75 @@
 # Installation
 
-This guide installs NovitaBox on one Linux host.
+This guide covers one-command release installs and source-based installs.
+
+## Recommended: Release Install
+
+The release installer downloads prebuilt NovitaBox components for the current operating system and architecture.
+
+### Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=v0.0.2 sudo -E bash
+```
+
+Linux defaults:
+
+```text
+ROOT_DIR=/data/novitabox
+IMAGE_PATH=/data/novitabox.img
+IMAGE_SIZE=50G
+DOMAIN=novitabox.localhost
+ENABLE_DNS=1
+ENABLE_CADDY=1
+```
+
+### macOS with Lima
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=v0.0.2 bash
+```
+
+On macOS, the installer downloads:
+
+```text
+novitabox-darwin-<arch>.tar.gz  # host boxctl and tools
+novitabox-linux-<arch>.tar.gz   # services installed inside the Lima VM
+```
+
+Homebrew and Lima are installed automatically when missing. macOS host DNS and proxy are disabled by default; enable them with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | \
+  RELEASE_VERSION=v0.0.2 ENABLE_MAC_DNS=1 ENABLE_MAC_PROXY=1 bash
+```
+
+### Runtime Assets
+
+`firecracker` and `vmlinux.bin` are downloaded from the stable runtime asset release by default:
+
+```text
+RUNTIME_ASSET_VERSION=v0.0.1
+```
+
+Override only when publishing new runtime assets:
+
+```bash
+RELEASE_VERSION=v0.0.2 RUNTIME_ASSET_VERSION=v0.0.3 scripts/install-release.sh
+```
+
+### Uninstall
+
+Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/uninstall-linux.sh | sudo -E FORCE=1 bash
+```
+
+macOS with Lima:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/uninstall-macos-lima.sh | FORCE=1 bash
+```
 
 ## Requirements
 
@@ -12,7 +81,7 @@ This guide installs NovitaBox on one Linux host.
 
 The installer uses Btrfs by default.
 
-## One-Command Install
+## Source Install
 
 From the repository root:
 

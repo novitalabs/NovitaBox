@@ -40,6 +40,7 @@ fi
 FORCE_DOWNLOAD="${FORCE_DOWNLOAD:-0}"
 INSTALL_HOMEBREW="${INSTALL_HOMEBREW:-1}"
 INSTALL_LIMA="${INSTALL_LIMA:-1}"
+CURL_PROXY="${CURL_PROXY:-${https_proxy:-${HTTPS_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}}}"
 
 COMMANDS=(boxapi boxctl boxd boxlet boxproxy boxshim)
 
@@ -90,13 +91,37 @@ need_tools() {
   fi
 }
 
+curl_retry_all_errors_args=()
+if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+  curl_retry_all_errors_args=(--retry-all-errors)
+fi
+curl_proxy_args=()
+if [[ -n "${CURL_PROXY}" ]]; then
+  curl_proxy_args=(--proxy "${CURL_PROXY}")
+fi
+
+download_to_tmp() {
+  local url="$1"
+  local tmp="$2"
+
+  rm -f "${tmp}"
+  if ! curl -fL --http1.1 --retry 5 "${curl_retry_all_errors_args[@]}" "${curl_proxy_args[@]}" --retry-delay 2 -o "${tmp}" "${url}"; then
+    rm -f "${tmp}"
+    return 1
+  fi
+}
+
 download_source_script() {
   local name="$1"
   local path="${SOURCE_DIR}/scripts/${name}"
   local url="${SOURCE_BASE_URL}/scripts/${name}"
+  local tmp="${path}.tmp"
 
   log "downloading ${url}"
-  curl -fL --retry 3 --retry-delay 2 -o "${path}" "${url}"
+  if ! download_to_tmp "${url}" "${tmp}"; then
+    die "download ${name} failed"
+  fi
+  mv -f "${tmp}" "${path}"
   chmod 0755 "${path}"
 }
 
@@ -191,8 +216,9 @@ download_archive() {
 
   log "downloading ${url}"
   tmp="${path}.tmp"
-  rm -f "${tmp}"
-  curl -fL --retry 3 --retry-delay 2 -o "${tmp}" "${url}"
+  if ! download_to_tmp "${url}" "${tmp}"; then
+    die "download ${name} failed"
+  fi
   mv "${tmp}" "${path}"
   printf '%s\n' "${path}"
 }
@@ -274,6 +300,9 @@ install_macos_lima() {
 main() {
   log "starting NovitaBox release installer ${RELEASE_VERSION}"
   log "runtime assets version ${RUNTIME_ASSET_VERSION}"
+  if [[ -n "${CURL_PROXY}" ]]; then
+    log "using curl proxy ${CURL_PROXY}"
+  fi
   need_tools
   ensure_source_layout
 
