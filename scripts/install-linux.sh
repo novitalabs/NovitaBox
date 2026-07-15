@@ -34,8 +34,10 @@ BOXPROXY_ADDR="${BOXPROXY_ADDR:-127.0.0.1:8082}"
 
 FIRECRACKER_URL="${FIRECRACKER_URL:-}"
 KERNEL_URL="${KERNEL_URL:-}"
+JAILER_URL="${JAILER_URL:-}"
 FIRECRACKER_PATH="${FIRECRACKER_PATH:-}"
 KERNEL_PATH="${KERNEL_PATH:-}"
+JAILER_PATH="${JAILER_PATH:-}"
 CURL_PROXY="${CURL_PROXY:-${https_proxy:-${HTTPS_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}}}"
 
 COMMANDS=(boxapi boxctl boxd boxlet boxproxy boxshim)
@@ -142,8 +144,13 @@ default_firecracker_url() {
 }
 
 default_kernel_url() {
-  local arch="$1"
-  echo "https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/vmlinux.bin-${arch}"
+	local arch="$1"
+	echo "https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/vmlinux.bin-${arch}"
+}
+
+default_jailer_url() {
+	local arch="$1"
+	echo "https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/jailer-${arch}"
 }
 
 install_packages() {
@@ -406,17 +413,20 @@ install_asset() {
 }
 
 install_runtime_assets() {
-  local arch="$1"
-  local firecracker_url="${FIRECRACKER_URL:-$(default_firecracker_url "$arch")}"
-  local kernel_url="${KERNEL_URL:-$(default_kernel_url "$arch")}"
+	local arch="$1"
+	local firecracker_url="${FIRECRACKER_URL:-$(default_firecracker_url "$arch")}"
+	local kernel_url="${KERNEL_URL:-$(default_kernel_url "$arch")}"
+	local jailer_url="${JAILER_URL:-$(default_jailer_url "$arch")}"
 
-  install_asset "firecracker" "$FIRECRACKER_PATH" "$firecracker_url" "${ROOT_DIR}/firecracker" 0755
-  install_asset "kernel" "$KERNEL_PATH" "$kernel_url" "${ROOT_DIR}/vmlinux.bin" 0644
+	install_asset "firecracker" "$FIRECRACKER_PATH" "$firecracker_url" "${ROOT_DIR}/firecracker" 0755
+	install_asset "kernel" "$KERNEL_PATH" "$kernel_url" "${ROOT_DIR}/vmlinux.bin" 0644
+	install_asset "jailer" "$JAILER_PATH" "$jailer_url" "${ROOT_DIR}/jailer" 0755
 }
 
 write_systemd_units() {
-  log "writing systemd services"
-  cat >/etc/systemd/system/novitabox-boxlet.service <<EOF
+	log "writing systemd services"
+	local boxlet_args="--root ${ROOT_DIR} --addr ${BOXLET_ADDR}"
+	cat >/etc/systemd/system/novitabox-boxlet.service <<EOF
 [Unit]
 Description=NovitaBox node agent
 After=network-online.target
@@ -426,7 +436,7 @@ RequiresMountsFor=${ROOT_DIR}
 [Service]
 Type=simple
 WorkingDirectory=${ROOT_DIR}
-ExecStart=${ROOT_DIR}/boxlet --root ${ROOT_DIR} --addr ${BOXLET_ADDR}
+ExecStart=${ROOT_DIR}/boxlet ${boxlet_args}
 Restart=always
 RestartSec=2
 KillMode=process

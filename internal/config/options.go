@@ -173,6 +173,10 @@ func DefaultFirecrackerBinaryPath(rootDir string) string {
 	return filepath.Join(rootDir, "firecracker")
 }
 
+func DefaultFirecrackerJailerBinaryPath(rootDir string) string {
+	return filepath.Join(rootDir, "jailer")
+}
+
 func withPort(addr string, port int) (string, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {

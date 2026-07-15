@@ -33,8 +33,10 @@ DARWIN_ARCH="${DARWIN_ARCH:-}"
 ASSET_ARCH="${ASSET_ARCH:-}"
 FIRECRACKER_URL="${FIRECRACKER_URL:-}"
 KERNEL_URL="${KERNEL_URL:-}"
+JAILER_URL="${JAILER_URL:-}"
 FIRECRACKER_PATH="${FIRECRACKER_PATH:-}"
 KERNEL_PATH="${KERNEL_PATH:-}"
+JAILER_PATH="${JAILER_PATH:-}"
 
 LIMA_CPUS="${LIMA_CPUS:-2}"
 LIMA_MEMORY="${LIMA_MEMORY:-4GiB}"
@@ -303,10 +305,12 @@ resolve_arch_config() {
   ASSET_ARCH="${ASSET_ARCH:-${BUILD_ARCH}}"
   LIMA_IMAGE_URL="${LIMA_IMAGE_URL:-$(ubuntu_cloud_image_url_for_lima_arch "${LIMA_ARCH}")}"
   LIMA_IMAGE_PATH="${LIMA_IMAGE_PATH:-${LIMA_TEMPLATE_DIR}/$(ubuntu_cloud_image_name_for_lima_arch "${LIMA_ARCH}")}"
-  FIRECRACKER_URL="${FIRECRACKER_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/firecracker-${ASSET_ARCH}}"
-  KERNEL_URL="${KERNEL_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/vmlinux.bin-${ASSET_ARCH}}"
-  FIRECRACKER_PATH="${FIRECRACKER_PATH:-${ASSET_DIR}/firecracker-${ASSET_ARCH}}"
-  KERNEL_PATH="${KERNEL_PATH:-${ASSET_DIR}/vmlinux.bin-${ASSET_ARCH}}"
+	FIRECRACKER_URL="${FIRECRACKER_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/firecracker-${ASSET_ARCH}}"
+	KERNEL_URL="${KERNEL_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/vmlinux.bin-${ASSET_ARCH}}"
+	JAILER_URL="${JAILER_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/jailer-${ASSET_ARCH}}"
+	FIRECRACKER_PATH="${FIRECRACKER_PATH:-${ASSET_DIR}/firecracker-${ASSET_ARCH}}"
+	KERNEL_PATH="${KERNEL_PATH:-${ASSET_DIR}/vmlinux.bin-${ASSET_ARCH}}"
+	JAILER_PATH="${JAILER_PATH:-${ASSET_DIR}/jailer-${ASSET_ARCH}}"
 }
 
 size_to_mib() {
@@ -368,6 +372,7 @@ print_config() {
   LIMA_IMAGE_URL      ${LIMA_IMAGE_URL}
   FIRECRACKER_PATH    ${FIRECRACKER_PATH}
   KERNEL_PATH         ${KERNEL_PATH}
+  JAILER_PATH         ${JAILER_PATH}
   CONFIG_DOCKER_MIRR  ${CONFIGURE_DOCKER_MIRRORS}
   DOCKER_MIRRORS      ${DOCKER_REGISTRY_MIRRORS}
   SKIP_BUILD          ${SKIP_BUILD}
@@ -437,9 +442,10 @@ download_asset_if_needed() {
 }
 
 prepare_runtime_assets() {
-  mkdir -p "${ASSET_DIR}"
-  download_asset_if_needed "firecracker" "${FIRECRACKER_PATH}" "${FIRECRACKER_URL}" 0755
-  download_asset_if_needed "kernel" "${KERNEL_PATH}" "${KERNEL_URL}" 0644
+	mkdir -p "${ASSET_DIR}"
+	download_asset_if_needed "firecracker" "${FIRECRACKER_PATH}" "${FIRECRACKER_URL}" 0755
+	download_asset_if_needed "kernel" "${KERNEL_PATH}" "${KERNEL_URL}" 0644
+	download_asset_if_needed "jailer" "${JAILER_PATH}" "${JAILER_URL}" 0755
 }
 
 prepare_lima_image() {
@@ -655,10 +661,12 @@ sync_install_payload_to_vm() {
   cp "${SOURCE_DIR}/scripts/uninstall-linux.sh" "${payload_dir}/scripts/uninstall-linux.sh"
   chmod +x "${payload_dir}/scripts/install-linux.sh"
   chmod +x "${payload_dir}/scripts/uninstall-linux.sh"
-  cp "${FIRECRACKER_PATH}" "${payload_dir}/assets/firecracker"
-  cp "${KERNEL_PATH}" "${payload_dir}/assets/vmlinux.bin"
-  chmod 0755 "${payload_dir}/assets/firecracker"
-  chmod 0644 "${payload_dir}/assets/vmlinux.bin"
+	cp "${FIRECRACKER_PATH}" "${payload_dir}/assets/firecracker"
+	cp "${KERNEL_PATH}" "${payload_dir}/assets/vmlinux.bin"
+	cp "${JAILER_PATH}" "${payload_dir}/assets/jailer"
+	chmod 0755 "${payload_dir}/assets/firecracker"
+	chmod 0644 "${payload_dir}/assets/vmlinux.bin"
+	chmod 0755 "${payload_dir}/assets/jailer"
 
   local cmd
   for cmd in boxapi boxctl boxd boxlet boxproxy boxshim; do
@@ -694,6 +702,7 @@ run_linux_installer() {
       GOPROXY='${GOPROXY}' \
       FIRECRACKER_PATH='${VM_INSTALL_DIR}/assets/firecracker' \
       KERNEL_PATH='${VM_INSTALL_DIR}/assets/vmlinux.bin' \
+      JAILER_PATH='${VM_INSTALL_DIR}/assets/jailer' \
       SKIP_BUILD=1 \
       SOURCE_DIR='${VM_INSTALL_DIR}' \
       bash scripts/install-linux.sh
