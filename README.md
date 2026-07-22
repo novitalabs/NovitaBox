@@ -8,7 +8,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0 License"></a>
 </div>
 
-**The local edition of Novita Sandbox** — a secure, MicroVM-based execution environment for AI Agents.
+**The local edition of Novita Sandbox** — a secure execution environment for AI Agents, with MicroVM and gVisor runtime options.
 
 NovitaBox brings Novita's production sandbox stack to your laptop, on-prem servers, or edge devices. Run AI Agents
 locally with millisecond startup times, zero cloud latency, and complete data privacy. Use the standard **Novita Sandbox
@@ -25,13 +25,12 @@ SDK** to write your agent code once, then run it locally with NovitaBox or in No
   cloud dependency at runtime.
 - **🔒 Privacy by design** — Code, files, and execution traces never leave your machine. Suitable for air-gapped,
   regulated, or data-sensitive workloads.
-- **⚡ Millisecond startup** — Powered by MicroVM technology with kernel-level isolation. Spin up sandboxes in
-  milliseconds with minimal memory overhead.
+- **⚡ Fast startup** — Use Firecracker for MicroVM snapshot startup or gVisor for container-style sandboxes.
 - **🔁 One codebase, local to production** — Use Novita Sandbox SDK for both NovitaBox local development and Novita
   production.
 - **🛠️ Full template lifecycle** — Build, publish, and manage custom sandbox image templates locally.
-- **🧩 Multiple runtimes** — Supports both Firecracker and Cloud Hypervisor runtimes, so you can choose the MicroVM
-  backend that fits your environment.
+- **🧩 Multiple runtimes** — Supports Firecracker, gVisor, and Cloud Hypervisor runtime backends.
+- **🎮 NVIDIA GPU support** — gVisor sandboxes can expose NVIDIA GPUs with `--gpu <count>` through runsc `nvproxy` and NVIDIA CDI.
 - **🌐 E2B SDK compatible** — Existing E2B SDK code works without modification. Migrate by changing one endpoint.
 
 ## 🚀 Quick Start
@@ -54,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/i
 
 The release installer detects your operating system and CPU architecture, downloads the matching prebuilt components,
 and runs the platform installer. On macOS it downloads both Darwin binaries for the host and Linux binaries for the Lima
-VM. Firecracker and the guest kernel are kept on the stable `v0.0.1` runtime assets by default.
+VM. Firecracker and the guest kernel are kept on the stable `v0.0.1` runtime assets by default. gVisor deployments also need a `runsc` binary available at `$ROOT_DIR/runsc` or configured with `--runsc-bin`.
 
 Linux installs configure local DNS and HTTPS proxy by default. On macOS, enable host DNS and proxy explicitly:
 
@@ -104,11 +103,13 @@ mount -o loop /data/novitabox.img /data/novitabox
 https://github.com/novitalabs/NovitaBox/releases/download/v0.0.1/firecracker
 # firecracker guest kernel
 https://github.com/novitalabs/NovitaBox/releases/download/v0.0.1/vmlinux.bin
+# gVisor runsc, required for --runtime gvisor
+https://gvisor.dev/docs/user_guide/install/
 ```
 
 #### Start the NovitaBox Server
 
-Ensure your local machine has KVM (Linux) or equivalent virtualization features enabled.
+Ensure your local machine has KVM (Linux) or equivalent virtualization features enabled when you use Firecracker or Cloud Hypervisor.
 
 ```bash
 # clone the repository
@@ -169,6 +170,16 @@ sudo systemctl restart caddy
   --run 'apt-get install -y curl'
 ```
 
+Build a gVisor template:
+
+```bash
+/data/novitabox/boxctl \
+  --api http://127.0.0.1:8080 \
+  template build cuda-template \
+  --runtime gvisor \
+  --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+```
+
 #### Launch a sandbox
 
 ```bash
@@ -185,12 +196,28 @@ SANDBOX_ID=sbx-xxxxxxxxxxxxxxxxxxxx
   exec -it "$SANDBOX_ID" /bin/sh
 ```
 
+Launch a gVisor sandbox with one NVIDIA GPU:
+
+```bash
+/data/novitabox/boxctl sandbox create \
+  --template "$TEMPLATE_ID" \
+  --runtime gvisor \
+  --gpu 1
+```
+
+Verify GPU access:
+
+```bash
+/data/novitabox/boxctl sandbox exec "$SANDBOX_ID" /usr/bin/nvidia-smi
+/data/novitabox/boxctl sandbox exec "$SANDBOX_ID" /cuda-samples/vectorAdd
+```
+
 ---
 
 
 ## 🏗️ Architecture
 
-NovitaBox runs as a set of small host services and routes Novita Sandbox SDK calls to MicroVM instances managed locally:
+NovitaBox runs as a set of small host services and routes Novita Sandbox SDK calls to locally managed sandbox runtimes:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -208,13 +235,13 @@ NovitaBox runs as a set of small host services and routes Novita Sandbox SDK cal
 │         │                 │                   │             │
 │         ▼                 ▼                   ▼             │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │           MicroVM Manager (KVM / HVF)               │    │
+│  │        Runtime Manager (MicroVM / gVisor)           │    │
 │  └────────────────────┬────────────────────────────────┘    │
 │                       │                                     │
 │         ┌─────────────┴─────────────┐                       │
 │         ▼                           ▼                       │
 │  ┌──────────────┐            ┌──────────────┐               │
-│  │  Sandbox VM  │  …         │  Sandbox VM  │               │
+│  │  Sandbox     │  …         │  Sandbox     │               │
 │  │  (rootfs +   │            │  (rootfs +   │               │
 │  │   envd)      │            │   envd)      │               │
 │  └──────────────┘            └──────────────┘               │
@@ -228,10 +255,10 @@ NovitaBox is built around a runtime abstraction instead of being tied to one bac
 Currently supported runtimes:
 
 - Firecracker
+- gVisor
 - Cloud Hypervisor
 
-Runtime behavior is capability-driven. If a runtime does not support a feature, such as pause/resume with GPU
-passthrough, NovitaBox can degrade the API behavior explicitly instead of failing unpredictably.
+Runtime behavior is capability-driven. Firecracker provides MicroVM snapshot support. gVisor provides a directory-rootfs container runtime and NVIDIA GPU support through runsc `nvproxy` and NVIDIA CDI. If a runtime does not support a feature, such as pause/resume with GPU passthrough, NovitaBox can degrade the API behavior explicitly instead of failing unpredictably.
 
 #### Fixed Guest IP Networking
 
@@ -281,11 +308,11 @@ The state flow is intentionally simple:
 ```text
 docker image + start_cmd -> Template
 
-Template - memfile - snapfile -> Image
+Firecracker Template - memfile - snapfile -> Image
 Image -> sandbox -> Template
 
 Template -> Sandbox
-Sandbox -> Snapshot
+Firecracker Sandbox -> Snapshot
 ```
 
 This makes it clear which artifacts are portable, which artifacts are optimized for fast startup, and which state
@@ -302,8 +329,8 @@ belongs to a running sandbox.
 - **API:** [HTTP API](docs/api/http.md), [Internal RPC](docs/api/RPC.md)
 - **Architecture:** [Overview](docs/architecture/overview.md), [Components](docs/architecture/components.md), [RuntimeSpec](docs/architecture/runtime.md), [Artifact Model](docs/architecture/artifact.md), [Network](docs/architecture/network.md), [Sandbox Lifecycle](docs/architecture/lifecycle.md), [File Layout](docs/architecture/file-layout.md), [Security Model](docs/architecture/security.md)
 - **CLI reference:** [Template](docs/cli/template.md), [Sandbox](docs/cli/sandbox.md), [Image](docs/cli/image.md), [Runtime and snapshot](docs/cli/others.md)
-- **Changelog:** [v0.0.1](docs/changelog/v0.0.1.md)
-- **Chinese docs:** [使用手册](docs/zh/usage.md), [Architecture overview](docs/zh/architecture/overview.md), [v0.0.1 changelog](docs/zh/changelog/v0.0.1.md)
+- **Changelog:** [v0.0.3](docs/changelog/v0.0.3.md), [v0.0.1](docs/changelog/v0.0.1.md)
+- **Chinese docs:** [使用手册](docs/zh/usage.md), [Architecture overview](docs/zh/architecture/overview.md), [v0.0.3 changelog](docs/zh/changelog/v0.0.3.md), [v0.0.1 changelog](docs/zh/changelog/v0.0.1.md)
 
 ---
 

@@ -12,7 +12,7 @@ boxlet
 
 boxshim
   -> selects runtime driver
-  -> translates RuntimeSpec into Firecracker or Cloud Hypervisor operations
+  -> translates RuntimeSpec into Firecracker, gVisor, or Cloud Hypervisor operations
 ```
 
 RuntimeSpec includes:
@@ -21,13 +21,43 @@ RuntimeSpec includes:
 - runtime type
 - machine resources
 - kernel and rootfs paths
-- snapshot paths
+- snapshot paths when the selected runtime uses VM snapshot state
 - network configuration
 - agent configuration
 - jailer configuration
 - labels and annotations
 
 Runtime-specific details should live in runtime driver options rather than leaking into the upper layers.
+
+## Supported Runtimes
+
+### Firecracker
+
+Firecracker is the default MicroVM runtime. It uses:
+
+- `rootfs.ext4`
+- guest kernel
+- `memfile` and `snapfile` for template startup and pause/resume
+- tap networking inside a per-sandbox network namespace
+
+Firecracker is the runtime to use when full VM snapshot behavior is required.
+
+### gVisor
+
+gVisor uses `runsc` as the low-level runtime. It uses:
+
+- directory rootfs
+- OCI bundle under the sandbox directory
+- existing host network namespace prepared by `boxlet`
+- optional NVIDIA GPU injection with `runsc --nvproxy`
+
+gVisor templates are directory-rootfs templates. They do not produce Firecracker `memfile` or `snapfile` artifacts.
+
+GPU support is enabled by setting `MachineSpec.gpu` to a positive count. NovitaBox reads NVIDIA CDI specs from standard locations such as `/etc/cdi/nvidia.yaml` and merges the device nodes, bind mounts, environment variables, and supported hooks into the OCI spec. The `update-ldcache` CDI hook is skipped under `runsc`; NovitaBox injects the NVIDIA library path and creates the required `libcuda.so.1` and `libnvidia-ml.so.1` links through CDI symlink hooks.
+
+### Cloud Hypervisor
+
+Cloud Hypervisor is exposed through the same runtime abstraction. Capability fields decide which operations are available to users.
 
 ## Runtime Capabilities
 
@@ -41,6 +71,8 @@ Each runtime exposes capabilities:
 - full snapshot
 - diff snapshot
 - GPU
+- vsock
+- tap networking
 - hotplug disk
 - live resize CPU
 - live resize memory
@@ -48,4 +80,4 @@ Each runtime exposes capabilities:
 - serial console
 - jailer
 
-Capabilities allow NovitaBox to degrade API behavior based on the selected runtime.
+Capabilities allow NovitaBox to degrade API behavior based on the selected runtime. For example, gVisor supports start from image/template and graceful shutdown, but does not currently support Firecracker-style pause/resume snapshots.

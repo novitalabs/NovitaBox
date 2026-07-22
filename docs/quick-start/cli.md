@@ -72,3 +72,10 @@ When debugging NovitaBox itself, prefer `boxctl` because it exposes local-only c
 /data/novitabox/boxctl sandbox list
 /data/novitabox/boxctl exec -it sbx-xxxxxxxxxxxxxxxxxxxx /bin/sh
 ```
+
+Runtime selection and GPU requests are local NovitaBox features exposed by `boxctl` and the native HTTP API:
+
+```bash
+/data/novitabox/boxctl template build cuda-template --runtime gvisor --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+/data/novitabox/boxctl sandbox create --template tpl-xxxxxxxxxxxxxxxxxxxx --runtime gvisor --gpu 1
+```

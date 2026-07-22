@@ -22,7 +22,7 @@ Responsibilities:
 - start and manage `boxshim`
 - prepare local rootfs, memory, snapshot, and runtime files
 - manage local sandbox resources
-- prepare sandbox network namespace, tap, veth, routes, and NAT
+- prepare sandbox network namespace, tap or gVisor veth addresses, routes, and NAT
 - build templates
 - expose node runtime capabilities
 
@@ -41,11 +41,14 @@ Responsibilities:
 Runtime drivers:
 
 - Firecracker driver
+- gVisor driver
 - Cloud Hypervisor driver
+
+The gVisor driver writes an OCI bundle, starts `runsc`, and optionally enables NVIDIA GPU access through `runsc --nvproxy` and NVIDIA CDI.
 
 ### boxd
 
-`boxd` is the in-sandbox guest agent.
+`boxd` is the in-sandbox agent. In Firecracker it runs inside the guest VM. In gVisor it runs as the container init process inside the `runsc` sandbox.
 
 Responsibilities:
 

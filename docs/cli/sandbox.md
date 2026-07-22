@@ -1,6 +1,6 @@
 # Sandbox CLI
 
-Sandbox commands manage running MicroVM sandboxes.
+Sandbox commands manage running sandboxes across supported runtimes.
 
 ```bash
 boxctl sandbox [command]
@@ -37,7 +37,32 @@ Options:
 - `--template <template_id>`: template id.
 - `--image <image_id>`: image id.
 - `--snapshot <snapshot_id>`: snapshot id.
-- `--runtime <runtime_type>`: runtime type, usually `firecracker`.
+- `--runtime <runtime_type>`: runtime type, for example `firecracker` or `gvisor`.
+- `--gpu <count>`: number of NVIDIA GPUs to expose to the sandbox. GPU support is currently implemented for gVisor.
+
+Create a gVisor sandbox:
+
+```bash
+boxctl sandbox create \
+  --template tpl-xxxxxxxxxxxxxxxxxxxx \
+  --runtime gvisor
+```
+
+Create a gVisor sandbox with one NVIDIA GPU:
+
+```bash
+boxctl sandbox create \
+  --template tpl-xxxxxxxxxxxxxxxxxxxx \
+  --runtime gvisor \
+  --gpu 1
+```
+
+Validate GPU access:
+
+```bash
+boxctl sandbox exec sbx-xxxxxxxxxxxxxxxxxxxx /usr/bin/nvidia-smi
+boxctl sandbox exec sbx-xxxxxxxxxxxxxxxxxxxx /cuda-samples/vectorAdd
+```
 
 ## List and Get
 
@@ -89,6 +114,8 @@ Pause creates sandbox-bound snapshot state and releases runtime resources when p
 ```bash
 boxctl sandbox pause sbx-xxxxxxxxxxxxxxxxxxxx
 ```
+
+Pause/resume snapshots are runtime dependent. Firecracker supports VM snapshot pause/resume. gVisor pause/resume snapshots are not supported yet.
 
 Resume starts the runtime again from the sandbox snapshot:
 

@@ -1,17 +1,3 @@
-
-## runtime
-
-list
-list all runtime
-
-show
-show runtime capabilities
-
-
-## snapshot
-
-show
-show sandbox snapshot info
 # Runtime CLI
 
 Runtime commands show what the local runtime backend can do.
@@ -30,12 +16,14 @@ boxctl runtime list
 
 ```bash
 boxctl runtime show firecracker
+boxctl runtime show gvisor
 ```
 
 ## Capabilities
 
 ```bash
 boxctl runtime capabilities firecracker
+boxctl runtime capabilities gvisor
 ```
 
 Capability fields describe whether the runtime supports:
@@ -46,6 +34,14 @@ Capability fields describe whether the runtime supports:
 - pause and resume
 - full snapshots
 - networking
+- GPU
+- graceful shutdown
+
+Runtime summary:
+
+- `firecracker`: MicroVM runtime with VM snapshot support.
+- `gvisor`: `runsc` runtime with directory rootfs support and NVIDIA GPU support through `--gpu <count>`.
+- `cloud-hypervisor`: runtime backend exposed through the same capability API.
 
 ## Global Flags
 

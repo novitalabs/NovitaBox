@@ -19,6 +19,7 @@ Options:
 - `--template <template_id>`: choose a template id.
 - `--cpu <count>`: template CPU count.
 - `--memory <mb>`: template memory in MB.
+- `--runtime <runtime_type>`: runtime type for the template. Supported values include `firecracker` and `gvisor`.
 
 ## Build
 
@@ -47,6 +48,7 @@ Other options:
 - `--template <template_id>`: choose a template id.
 - `--cpu <count>`: template CPU count.
 - `--memory <mb>`: template memory in MB.
+- `--runtime <runtime_type>`: choose the runtime for the template.
 
 Examples:
 
@@ -57,6 +59,19 @@ boxctl template build python-template \
   --run 'apt-get install -y python3' \
   --exec 'python3 --version'
 ```
+
+Build a gVisor template:
+
+```bash
+boxctl template build cuda-template \
+  --runtime gvisor \
+  --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+```
+
+Runtime notes:
+
+- Firecracker templates use `rootfs.ext4`, `memfile`, and `snapfile`.
+- gVisor templates use a directory rootfs and do not create Firecracker VM snapshot files.
 
 ## List
 

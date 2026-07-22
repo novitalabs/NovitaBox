@@ -1,11 +1,11 @@
 ## Network
 
-NovitaBox uses a fixed guest IP model.
+NovitaBox uses a per-sandbox network namespace model. Firecracker and gVisor share the same host access CIDR and veth allocation scheme, but the runtime-facing side is different.
 
 Each sandbox has:
 
-- fixed guest IP inside the VM
-- fixed gateway IP inside its namespace
+- fixed runtime-facing IP for the agent
+- fixed gateway IP for Firecracker tap networking
 - unique host access IP on the host
 - unique sandbox identity
 
@@ -24,6 +24,8 @@ Sandbox B:
 ```
 
 Network layout:
+
+### Firecracker
 
 ```text
 Host root netns
@@ -49,6 +51,39 @@ Host root netns
 ```
 
 The host never needs to access `169.254.0.21` directly. It accesses the unique `host_access_ip`, and the sandbox namespace translates traffic into the fixed guest IP.
+
+### gVisor
+
+gVisor runs `boxd` as a process in the prepared network namespace. There is no VM tap device in the data path. `boxlet` puts the unique host access IP on the namespace veth and puts the fixed guest IP on loopback for compatibility with the rest of the agent model.
+
+```text
+Host root netns
+  |
+  | route 10.11.0.1/32 -> vh-nb-a -> nb-a
+  |
+  +-----------------------------+
+  | nb-a                        |
+  |                             |
+  | eth0                        |
+  | 10.12.0.3/31                |
+  | 10.11.0.1/32                |
+  |                             |
+  | lo                          |
+  | 127.0.0.1                   |
+  | 169.254.0.21/30             |
+  |                             |
+  | runsc sandbox + boxd        |
+  | listens on 0.0.0.0:49983    |
+  +-----------------------------+
+```
+
+Both runtimes use the same host access URL shape:
+
+```text
+http://<host_access_ip>:49983
+```
+
+This keeps `boxproxy`, template builds, and SDK traffic independent of the runtime implementation.
 
 Default CIDRs:
 
