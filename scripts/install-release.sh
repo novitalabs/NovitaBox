@@ -13,6 +13,7 @@ set -Eeuo pipefail
 #   RELEASE_VERSION=v0.0.1 scripts/install-release.sh
 #   RELEASE_BASE_URL=https://github.com/novitalabs/NovitaBox/releases/download/v0.0.1 scripts/install-release.sh
 #   RUNTIME_ASSET_VERSION=v0.0.1 scripts/install-release.sh
+#   RUNSC_VERSION=v0.0.3 scripts/install-release.sh
 #   SOURCE_REF=main scripts/install-release.sh
 #   DOWNLOAD_DIR=/tmp/novitabox-release scripts/install-release.sh
 #   INSTALL_HOMEBREW=0 INSTALL_LIMA=0 scripts/install-release.sh
@@ -279,7 +280,7 @@ install_linux() {
   local arch="$1"
   install_components_from_archive "linux" "${arch}"
   log "running Linux installer with prebuilt components"
-  SKIP_BUILD=1 SOURCE_DIR="${SOURCE_DIR}" RELEASE_VERSION="${RUNTIME_ASSET_VERSION}" bash "${SOURCE_DIR}/scripts/install-linux.sh"
+  SKIP_BUILD=1 SOURCE_DIR="${SOURCE_DIR}" RELEASE_VERSION="${RUNTIME_ASSET_VERSION}" RUNSC_VERSION="${RELEASE_VERSION}" bash "${SOURCE_DIR}/scripts/install-linux.sh"
 }
 
 install_macos_lima() {
@@ -294,7 +295,7 @@ install_macos_lima() {
   install_components_from_archive "linux" "${linux_arch}"
 
   log "running macOS Lima installer with prebuilt components"
-  SKIP_BUILD=1 SOURCE_DIR="${SOURCE_DIR}" RELEASE_VERSION="${RUNTIME_ASSET_VERSION}" bash "${SOURCE_DIR}/scripts/install-macos-lima.sh"
+  SKIP_BUILD=1 SOURCE_DIR="${SOURCE_DIR}" RELEASE_VERSION="${RUNTIME_ASSET_VERSION}" RUNSC_VERSION="${RELEASE_VERSION}" bash "${SOURCE_DIR}/scripts/install-macos-lima.sh"
 }
 
 main() {

@@ -53,7 +53,9 @@ curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/i
 
 The release installer detects your operating system and CPU architecture, downloads the matching prebuilt components,
 and runs the platform installer. On macOS it downloads both Darwin binaries for the host and Linux binaries for the Lima
-VM. Firecracker and the guest kernel are kept on the stable `v0.0.1` runtime assets by default. gVisor deployments also need a `runsc` binary available at `$ROOT_DIR/runsc` or configured with `--runsc-bin`.
+VM. Firecracker and the guest kernel are kept on the stable `v0.0.1` runtime assets by default. gVisor deployments also
+fetch `runsc` from the release assets when `RUNSC_VERSION` is set, and you can still override it with `RUNSC_PATH` or
+`--runsc-bin`.
 
 Linux installs configure local DNS and HTTPS proxy by default. On macOS, enable host DNS and proxy explicitly:
 

@@ -10,6 +10,7 @@ set -Eeuo pipefail
 #   ROOT_DIR=/data/novitabox IMAGE_SIZE=100G DOMAIN=novitabox.localhost sudo -E scripts/install-linux.sh
 #   FIRECRACKER_URL=https://.../firecracker-amd64 KERNEL_URL=https://.../vmlinux.bin-amd64 sudo -E scripts/install-linux.sh
 #   FIRECRACKER_PATH=/path/to/firecracker KERNEL_PATH=/path/to/vmlinux.bin sudo -E scripts/install-linux.sh
+#   RUNSC_VERSION=v0.0.3 sudo -E scripts/install-linux.sh
 #   CONFIGURE_DOCKER_MIRRORS=1 DOCKER_REGISTRY_MIRRORS=https://docker.m.daocloud.io,https://docker.1ms.run sudo -E scripts/install-linux.sh
 #   SKIP_BUILD=1 SOURCE_DIR=/path/to/prebuilt-layout sudo -E scripts/install-linux.sh
 
@@ -18,6 +19,7 @@ IMAGE_PATH="${IMAGE_PATH:-/data/novitabox.img}"
 IMAGE_SIZE="${IMAGE_SIZE:-50G}"
 DOMAIN="${DOMAIN:-novitabox.localhost}"
 RELEASE_VERSION="${RELEASE_VERSION:-v0.0.1}"
+RUNSC_VERSION="${RUNSC_VERSION:-}"
 SOURCE_DIR="${SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 INSTALL_GO="${INSTALL_GO:-auto}"
 GO_VERSION="${GO_VERSION:-1.26.4}"
@@ -35,9 +37,11 @@ BOXPROXY_ADDR="${BOXPROXY_ADDR:-127.0.0.1:8082}"
 FIRECRACKER_URL="${FIRECRACKER_URL:-}"
 KERNEL_URL="${KERNEL_URL:-}"
 JAILER_URL="${JAILER_URL:-}"
+RUNSC_URL="${RUNSC_URL:-}"
 FIRECRACKER_PATH="${FIRECRACKER_PATH:-}"
 KERNEL_PATH="${KERNEL_PATH:-}"
 JAILER_PATH="${JAILER_PATH:-}"
+RUNSC_PATH="${RUNSC_PATH:-}"
 CURL_PROXY="${CURL_PROXY:-${https_proxy:-${HTTPS_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}}}"
 
 COMMANDS=(boxapi boxctl boxd boxlet boxproxy boxshim)
@@ -151,6 +155,11 @@ default_kernel_url() {
 default_jailer_url() {
 	local arch="$1"
 	echo "https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/jailer-${arch}"
+}
+
+default_runsc_url() {
+	local arch="$1"
+	echo "https://github.com/novitalabs/NovitaBox/releases/download/${RUNSC_VERSION}/runsc-${arch}"
 }
 
 install_packages() {
@@ -421,6 +430,24 @@ install_runtime_assets() {
 	install_asset "firecracker" "$FIRECRACKER_PATH" "$firecracker_url" "${ROOT_DIR}/firecracker" 0755
 	install_asset "kernel" "$KERNEL_PATH" "$kernel_url" "${ROOT_DIR}/vmlinux.bin" 0644
 	install_asset "jailer" "$JAILER_PATH" "$jailer_url" "${ROOT_DIR}/jailer" 0755
+
+  if [[ -n "${RUNSC_PATH}" ]]; then
+    install_asset "runsc" "$RUNSC_PATH" "" "${ROOT_DIR}/runsc" 0755
+    return
+  fi
+
+  local runsc_url=""
+  if [[ -n "${RUNSC_URL}" ]]; then
+    runsc_url="${RUNSC_URL}"
+  elif [[ -n "${RUNSC_VERSION}" ]]; then
+    runsc_url="$(default_runsc_url "$arch")"
+  fi
+
+  if [[ -n "${runsc_url}" ]]; then
+    install_asset "runsc" "" "$runsc_url" "${ROOT_DIR}/runsc" 0755
+  else
+    log "skipping runsc runtime asset; set RUNSC_PATH, RUNSC_URL, or RUNSC_VERSION to enable gVisor"
+  fi
 }
 
 write_systemd_units() {

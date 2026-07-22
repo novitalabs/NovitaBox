@@ -18,6 +18,7 @@ set -Eeuo pipefail
 #   ENABLE_VM_DNS=1 ENABLE_VM_CADDY=1 scripts/install-macos-lima.sh
 #   CONFIGURE_DOCKER_MIRRORS=1 DOCKER_REGISTRY_MIRRORS=https://docker.m.daocloud.io,https://docker.1ms.run scripts/install-macos-lima.sh
 #   FIRECRACKER_URL=https://.../firecracker-arm64 KERNEL_URL=https://.../vmlinux.bin-arm64 scripts/install-macos-lima.sh
+#   RUNSC_VERSION=v0.0.3 scripts/install-macos-lima.sh
 #   SKIP_BUILD=1 scripts/install-macos-lima.sh
 
 VM_NAME="${VM_NAME:-novitabox}"
@@ -34,9 +35,13 @@ ASSET_ARCH="${ASSET_ARCH:-}"
 FIRECRACKER_URL="${FIRECRACKER_URL:-}"
 KERNEL_URL="${KERNEL_URL:-}"
 JAILER_URL="${JAILER_URL:-}"
+RUNSC_URL="${RUNSC_URL:-}"
 FIRECRACKER_PATH="${FIRECRACKER_PATH:-}"
 KERNEL_PATH="${KERNEL_PATH:-}"
 JAILER_PATH="${JAILER_PATH:-}"
+RUNSC_PATH="${RUNSC_PATH:-}"
+RUNSC_VERSION="${RUNSC_VERSION:-}"
+RUNSC_VM_PATH=""
 
 LIMA_CPUS="${LIMA_CPUS:-2}"
 LIMA_MEMORY="${LIMA_MEMORY:-4GiB}"
@@ -303,14 +308,18 @@ resolve_arch_config() {
   BUILD_ARCH="${BUILD_ARCH:-$(go_arch_for_lima_arch "${LIMA_ARCH}")}"
   DARWIN_ARCH="${DARWIN_ARCH:-$(go_arch_for_darwin_host)}"
   ASSET_ARCH="${ASSET_ARCH:-${BUILD_ARCH}}"
-  LIMA_IMAGE_URL="${LIMA_IMAGE_URL:-$(ubuntu_cloud_image_url_for_lima_arch "${LIMA_ARCH}")}"
+	LIMA_IMAGE_URL="${LIMA_IMAGE_URL:-$(ubuntu_cloud_image_url_for_lima_arch "${LIMA_ARCH}")}"
   LIMA_IMAGE_PATH="${LIMA_IMAGE_PATH:-${LIMA_TEMPLATE_DIR}/$(ubuntu_cloud_image_name_for_lima_arch "${LIMA_ARCH}")}"
 	FIRECRACKER_URL="${FIRECRACKER_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/firecracker-${ASSET_ARCH}}"
 	KERNEL_URL="${KERNEL_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/vmlinux.bin-${ASSET_ARCH}}"
 	JAILER_URL="${JAILER_URL:-https://github.com/novitalabs/NovitaBox/releases/download/${RELEASE_VERSION}/jailer-${ASSET_ARCH}}"
+	if [[ -z "${RUNSC_URL}" && -n "${RUNSC_VERSION}" ]]; then
+		RUNSC_URL="https://github.com/novitalabs/NovitaBox/releases/download/${RUNSC_VERSION}/runsc-${ASSET_ARCH}"
+	fi
 	FIRECRACKER_PATH="${FIRECRACKER_PATH:-${ASSET_DIR}/firecracker-${ASSET_ARCH}}"
 	KERNEL_PATH="${KERNEL_PATH:-${ASSET_DIR}/vmlinux.bin-${ASSET_ARCH}}"
 	JAILER_PATH="${JAILER_PATH:-${ASSET_DIR}/jailer-${ASSET_ARCH}}"
+	RUNSC_PATH="${RUNSC_PATH:-${ASSET_DIR}/runsc-${ASSET_ARCH}}"
 }
 
 size_to_mib() {
@@ -373,6 +382,8 @@ print_config() {
   FIRECRACKER_PATH    ${FIRECRACKER_PATH}
   KERNEL_PATH         ${KERNEL_PATH}
   JAILER_PATH         ${JAILER_PATH}
+  RUNSC_PATH          ${RUNSC_PATH}
+  RUNSC_VERSION       ${RUNSC_VERSION:-<disabled>}
   CONFIG_DOCKER_MIRR  ${CONFIGURE_DOCKER_MIRRORS}
   DOCKER_MIRRORS      ${DOCKER_REGISTRY_MIRRORS}
   SKIP_BUILD          ${SKIP_BUILD}
@@ -446,6 +457,9 @@ prepare_runtime_assets() {
 	download_asset_if_needed "firecracker" "${FIRECRACKER_PATH}" "${FIRECRACKER_URL}" 0755
 	download_asset_if_needed "kernel" "${KERNEL_PATH}" "${KERNEL_URL}" 0644
 	download_asset_if_needed "jailer" "${JAILER_PATH}" "${JAILER_URL}" 0755
+  if [[ -n "${RUNSC_VERSION}" || -n "${RUNSC_URL}" ]]; then
+    download_asset_if_needed "runsc" "${RUNSC_PATH}" "${RUNSC_URL}" 0755
+  fi
 }
 
 prepare_lima_image() {
@@ -657,16 +671,23 @@ sync_install_payload_to_vm() {
   payload_dir="$(mktemp -d "${TMPDIR:-/tmp}/novitabox-lima-payload.XXXXXX")"
 
   mkdir -p "${payload_dir}/bin/linux-${BUILD_ARCH}" "${payload_dir}/scripts" "${payload_dir}/assets"
-  cp "${SOURCE_DIR}/scripts/install-linux.sh" "${payload_dir}/scripts/install-linux.sh"
-  cp "${SOURCE_DIR}/scripts/uninstall-linux.sh" "${payload_dir}/scripts/uninstall-linux.sh"
-  chmod +x "${payload_dir}/scripts/install-linux.sh"
-  chmod +x "${payload_dir}/scripts/uninstall-linux.sh"
-	cp "${FIRECRACKER_PATH}" "${payload_dir}/assets/firecracker"
-	cp "${KERNEL_PATH}" "${payload_dir}/assets/vmlinux.bin"
-	cp "${JAILER_PATH}" "${payload_dir}/assets/jailer"
-	chmod 0755 "${payload_dir}/assets/firecracker"
-	chmod 0644 "${payload_dir}/assets/vmlinux.bin"
-	chmod 0755 "${payload_dir}/assets/jailer"
+	cp "${SOURCE_DIR}/scripts/install-linux.sh" "${payload_dir}/scripts/install-linux.sh"
+	cp "${SOURCE_DIR}/scripts/uninstall-linux.sh" "${payload_dir}/scripts/uninstall-linux.sh"
+	chmod +x "${payload_dir}/scripts/install-linux.sh"
+	chmod +x "${payload_dir}/scripts/uninstall-linux.sh"
+  cp "${FIRECRACKER_PATH}" "${payload_dir}/assets/firecracker"
+  cp "${KERNEL_PATH}" "${payload_dir}/assets/vmlinux.bin"
+  cp "${JAILER_PATH}" "${payload_dir}/assets/jailer"
+  chmod 0755 "${payload_dir}/assets/firecracker"
+  chmod 0644 "${payload_dir}/assets/vmlinux.bin"
+  chmod 0755 "${payload_dir}/assets/jailer"
+  if [[ -n "${RUNSC_PATH}" && -f "${RUNSC_PATH}" ]]; then
+    cp "${RUNSC_PATH}" "${payload_dir}/assets/runsc"
+    chmod 0755 "${payload_dir}/assets/runsc"
+    RUNSC_VM_PATH="${VM_INSTALL_DIR}/assets/runsc"
+  else
+    RUNSC_VM_PATH=""
+  fi
 
   local cmd
   for cmd in boxapi boxctl boxd boxlet boxproxy boxshim; do
@@ -689,6 +710,10 @@ sync_install_payload_to_vm() {
 
 run_linux_installer() {
   log "running Linux installer inside Lima VM"
+  local runsc_env_block=""
+  if [[ -n "${RUNSC_VM_PATH}" ]]; then
+    runsc_env_block="      RUNSC_PATH='${RUNSC_VM_PATH}' \\"
+  fi
   limactl shell "${VM_NAME}" -- bash -lc "
     cd '${VM_INSTALL_DIR}' &&
     sudo env \
@@ -703,6 +728,7 @@ run_linux_installer() {
       FIRECRACKER_PATH='${VM_INSTALL_DIR}/assets/firecracker' \
       KERNEL_PATH='${VM_INSTALL_DIR}/assets/vmlinux.bin' \
       JAILER_PATH='${VM_INSTALL_DIR}/assets/jailer' \
+${runsc_env_block}
       SKIP_BUILD=1 \
       SOURCE_DIR='${VM_INSTALL_DIR}' \
       bash scripts/install-linux.sh
