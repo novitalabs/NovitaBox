@@ -57,7 +57,8 @@ Override only when publishing new runtime assets:
 RELEASE_VERSION=v0.0.2 RUNTIME_ASSET_VERSION=v0.0.3 scripts/install-release.sh
 ```
 
-gVisor support requires a `runsc` binary. Put it at `$ROOT_DIR/runsc` or start `boxlet`/`boxshim` with `--runsc-bin`.
+gVisor support requires a `runsc` binary. The release installer can download it from the release assets when
+`RUNSC_VERSION` is set; otherwise put it at `$ROOT_DIR/runsc` or start `boxlet`/`boxshim` with `--runsc-bin`.
 
 NVIDIA GPU support for gVisor additionally requires the NVIDIA container toolkit on the host and a CDI spec:
 

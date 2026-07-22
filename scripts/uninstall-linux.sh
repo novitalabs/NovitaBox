@@ -18,7 +18,7 @@ KEEP_PACKAGES="${KEEP_PACKAGES:-1}"
 FORCE="${FORCE:-0}"
 
 SERVICES=(novitabox-boxapi.service novitabox-boxproxy.service novitabox-boxlet.service)
-COMMANDS=(boxapi boxctl boxd boxlet boxproxy boxshim firecracker vmlinux.bin)
+COMMANDS=(boxapi boxctl boxd boxlet boxproxy boxshim firecracker vmlinux.bin runsc)
 
 log() {
   printf '[novitabox-uninstall] %s\n' "$*"
@@ -98,12 +98,14 @@ kill_leftover_processes() {
   pkill -TERM -f "${ROOT_DIR}/boxlet" >/dev/null 2>&1 || true
   pkill -TERM -f "${ROOT_DIR}/boxshim" >/dev/null 2>&1 || true
   pkill -TERM -f "${ROOT_DIR}/firecracker" >/dev/null 2>&1 || true
+  pkill -TERM -f "${ROOT_DIR}/runsc" >/dev/null 2>&1 || true
   sleep 1
   pkill -KILL -f "${ROOT_DIR}/boxapi" >/dev/null 2>&1 || true
   pkill -KILL -f "${ROOT_DIR}/boxproxy" >/dev/null 2>&1 || true
   pkill -KILL -f "${ROOT_DIR}/boxlet" >/dev/null 2>&1 || true
   pkill -KILL -f "${ROOT_DIR}/boxshim" >/dev/null 2>&1 || true
   pkill -KILL -f "${ROOT_DIR}/firecracker" >/dev/null 2>&1 || true
+  pkill -KILL -f "${ROOT_DIR}/runsc" >/dev/null 2>&1 || true
 }
 
 cleanup_network() {
