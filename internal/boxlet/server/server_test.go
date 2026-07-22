@@ -63,8 +63,8 @@ func TestNodeService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list runtimes: %v", err)
 	}
-	if len(runtimes.GetRuntimes()) != 2 {
-		t.Fatalf("expected 2 runtimes, got %d", len(runtimes.GetRuntimes()))
+	if len(runtimes.GetRuntimes()) != 3 {
+		t.Fatalf("expected 3 runtimes, got %d", len(runtimes.GetRuntimes()))
 	}
 }
 
@@ -86,6 +86,32 @@ func TestSandboxRuntimeSpecUsesBoxdInit(t *testing.T) {
 	}
 }
 
+func TestSandboxRuntimeSpecUsesGVisorRootfsDir(t *testing.T) {
+	cfg := config.Default()
+	cfg.RootDir = t.TempDir()
+	svc := newSandboxService(cfg, log.NewNop(), nil)
+
+	spec := svc.runtimeSpecForSandbox(store.SandboxRecord{
+		ID:          "sbx-test",
+		State:       sandbox.StateRunning,
+		RuntimeType: "gvisor",
+		TemplateID:  "tpl-test",
+	})
+
+	if spec.GetRootfs().GetFormat() != "dir" {
+		t.Fatalf("rootfs format = %q, want dir", spec.GetRootfs().GetFormat())
+	}
+	if !strings.HasSuffix(spec.GetRootfs().GetPath(), filepath.Join("sandboxes", "sbx-test", "rootfs")) {
+		t.Fatalf("rootfs path = %q, want sandbox rootfs dir", spec.GetRootfs().GetPath())
+	}
+	if spec.GetKernel() != nil {
+		t.Fatalf("kernel spec = %#v, want nil", spec.GetKernel())
+	}
+	if spec.GetSnapshot() != nil {
+		t.Fatalf("snapshot spec = %#v, want nil", spec.GetSnapshot())
+	}
+}
+
 func TestCompleteRuntimeSpecFillsBoxdInit(t *testing.T) {
 	cfg := config.Default()
 	cfg.RootDir = t.TempDir()
@@ -104,6 +130,65 @@ func TestCompleteRuntimeSpecFillsBoxdInit(t *testing.T) {
 	args := strings.Join(spec.GetKernel().GetKernelArgs(), " ")
 	if !strings.Contains(args, "init=/novitabox/init") {
 		t.Fatalf("kernel args = %q, want init=/novitabox/init", args)
+	}
+}
+
+func TestCompleteRuntimeSpecPreservesGPUCountAndDefaultsMachine(t *testing.T) {
+	cfg := config.Default()
+	cfg.RootDir = t.TempDir()
+	svc := newSandboxService(cfg, log.NewNop(), nil)
+
+	spec := svc.completeRuntimeSpec(store.SandboxRecord{
+		ID:          "sbx-test",
+		State:       sandbox.StateRunning,
+		RuntimeType: "gvisor",
+		TemplateID:  "tpl-test",
+	}, &novitaboxv1.RuntimeSpec{
+		SandboxId:   "sbx-test",
+		RuntimeType: novitaboxv1.RuntimeType_RUNTIME_TYPE_CONTAINER,
+		Machine: &novitaboxv1.MachineSpec{
+			Gpu: 2,
+		},
+	})
+
+	if spec.GetMachine().GetGpu() != 2 {
+		t.Fatalf("gpu = %d, want 2", spec.GetMachine().GetGpu())
+	}
+	if spec.GetMachine().GetVcpu() != cfg.Template.VCPU {
+		t.Fatalf("vcpu = %d, want %d", spec.GetMachine().GetVcpu(), cfg.Template.VCPU)
+	}
+	if spec.GetMachine().GetMemoryMb() != cfg.Template.MemoryMB {
+		t.Fatalf("memory = %d, want %d", spec.GetMachine().GetMemoryMb(), cfg.Template.MemoryMB)
+	}
+}
+
+func TestTemplateRuntimeDriverUsesMetadata(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Default()
+	cfg.RootDir = t.TempDir()
+	st, err := sqlite.Open(ctx, filepath.Join(cfg.RootDir, "db", "novitabox.db"))
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	defer st.Close()
+
+	if err := st.CreateTemplate(ctx, store.TemplateRecord{
+		ID:         "tpl-gvisor",
+		RootfsPath: filepath.Join(cfg.RootDir, "templates", "tpl-gvisor", "rootfs"),
+		Metadata: map[string]string{
+			"runtimeType": "gvisor",
+		},
+	}); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	svc := newArtifactService(cfg, log.NewNop(), st)
+	got, err := svc.templateRuntimeDriver(ctx, "tpl-gvisor")
+	if err != nil {
+		t.Fatalf("template runtime driver: %v", err)
+	}
+	if got != "gvisor" {
+		t.Fatalf("runtime driver = %q, want gvisor", got)
 	}
 }
 

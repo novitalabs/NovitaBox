@@ -102,6 +102,137 @@ func TestCloneOrCopyFileCopiesContent(t *testing.T) {
 	assertFileContent(t, dest, "content")
 }
 
+func TestCopyFilePreservesMode(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	dest := filepath.Join(root, "nested", "dest")
+	if err := os.WriteFile(source, []byte("content"), 0o755); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.Chmod(source, 0o755); err != nil {
+		t.Fatalf("chmod source: %v", err)
+	}
+
+	if err := copyFile(source, dest); err != nil {
+		t.Fatalf("copyFile() error = %v", err)
+	}
+	info, err := os.Stat(dest)
+	if err != nil {
+		t.Fatalf("stat dest: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Fatalf("dest mode = %o, want 755", got)
+	}
+}
+
+func TestCopyDirPreservesMode(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	dest := filepath.Join(root, "nested", "dest")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	if err := os.Chmod(source, 0o1777); err != nil {
+		t.Fatalf("chmod source: %v", err)
+	}
+
+	if err := copyDir(source, dest); err != nil {
+		t.Fatalf("copyDir() error = %v", err)
+	}
+	info, err := os.Stat(dest)
+	if err != nil {
+		t.Fatalf("stat dest: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o777 {
+		t.Fatalf("dest mode = %o, want 777", got)
+	}
+}
+
+func TestInjectDomesticAptSourcesRewritesUpstreamMirrors(t *testing.T) {
+	root := t.TempDir()
+	aptDir := filepath.Join(root, "etc", "apt")
+	if err := os.MkdirAll(filepath.Join(aptDir, "sources.list.d"), 0o755); err != nil {
+		t.Fatalf("mkdir apt dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(aptDir, "sources.list"), []byte("deb http://archive.ubuntu.com/ubuntu jammy main restricted\n"), 0o644); err != nil {
+		t.Fatalf("write sources.list: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(aptDir, "sources.list.d", "security.list"), []byte("deb http://security.ubuntu.com/ubuntu jammy-security main restricted\n"), 0o644); err != nil {
+		t.Fatalf("write security.list: %v", err)
+	}
+
+	if err := injectDomesticAptSources(root); err != nil {
+		t.Fatalf("injectDomesticAptSources() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(aptDir, "sources.list"))
+	if err != nil {
+		t.Fatalf("read sources.list: %v", err)
+	}
+	if got := string(data); !strings.Contains(got, "http://mirrors.aliyun.com/ubuntu") {
+		t.Fatalf("rewritten sources.list = %q, want aliyun mirror", got)
+	}
+	if strings.Contains(string(data), "archive.ubuntu.com") {
+		t.Fatalf("rewritten sources.list still contains upstream mirror: %q", string(data))
+	}
+
+	data, err = os.ReadFile(filepath.Join(aptDir, "sources.list.d", "security.list"))
+	if err != nil {
+		t.Fatalf("read security.list: %v", err)
+	}
+	if got := string(data); !strings.Contains(got, "http://mirrors.aliyun.com/ubuntu") {
+		t.Fatalf("rewritten security.list = %q, want aliyun mirror", got)
+	}
+}
+
+func TestTemplateHostsContentIncludesMirrorEntries(t *testing.T) {
+	content := templateHostsContentWithResolver(func(host string) string {
+		switch host {
+		case "mirrors.aliyun.com":
+			return "198.18.0.16"
+		case "archive.ubuntu.com":
+			return "198.18.0.34"
+		case "security.ubuntu.com":
+			return "198.18.0.15"
+		default:
+			return ""
+		}
+	})
+	for _, want := range []string{
+		"127.0.0.1 localhost",
+		"198.18.0.16 mirrors.aliyun.com",
+		"198.18.0.34 archive.ubuntu.com",
+		"198.18.0.15 security.ubuntu.com",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("template hosts content missing %q: %s", want, content)
+		}
+	}
+}
+
+func TestCloneOrCopyFilePreservesMode(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	dest := filepath.Join(root, "nested", "dest")
+	if err := os.WriteFile(source, []byte("content"), 0o755); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.Chmod(source, 0o755); err != nil {
+		t.Fatalf("chmod source: %v", err)
+	}
+
+	if err := cloneOrCopyFile(source, dest); err != nil {
+		t.Fatalf("cloneOrCopyFile() error = %v", err)
+	}
+	info, err := os.Stat(dest)
+	if err != nil {
+		t.Fatalf("stat dest: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Fatalf("dest mode = %o, want 755", got)
+	}
+}
+
 func TestInternalSandboxNetworkSpecUsesLowestFreeSlot(t *testing.T) {
 	root := t.TempDir()
 	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
@@ -133,6 +264,63 @@ func TestInternalSandboxNetworkSpecUsesLowestFreeSlot(t *testing.T) {
 	}
 	if spec.GetHostAccessIp() != "10.11.0.2" {
 		t.Fatalf("host access ip = %q, want 10.11.0.2", spec.GetHostAccessIp())
+	}
+}
+
+func TestMarkUsedNetworkSlotsFromRouteOutput(t *testing.T) {
+	used := map[uint32]struct{}{3: {}}
+	markUsedNetworkSlotsFromRouteOutput("10.11.0.0/16", `
+default via 192.168.70.1 dev ens18
+10.11.0.1 via 10.12.0.3 dev vh-nb-aaaa
+10.11.0.2/32 via 10.12.0.5 dev vh-nb-bbbb
+10.12.0.2/31 dev vh-nb-aaaa proto kernel scope link src 10.12.0.2
+`, used)
+
+	for _, slot := range []uint32{1, 2, 3} {
+		if _, ok := used[slot]; !ok {
+			t.Fatalf("slot %d was not marked used", slot)
+		}
+	}
+	if _, ok := used[4]; ok {
+		t.Fatalf("slot 4 was unexpectedly marked used")
+	}
+}
+
+func TestTemplateBuildAgentURLUsesRuntimeNetworkHost(t *testing.T) {
+	cfg := config.Default()
+	networkSpec, err := newSandboxNetworkManager(cfg).SpecForSlot("template-build-tpl-test", 1)
+	if err != nil {
+		t.Fatalf("SpecForSlot() error = %v", err)
+	}
+
+	firecrackerURL, err := templateBuildAgentURL(cfg, "template-build-tpl-test", networkSpec, "firecracker")
+	if err != nil {
+		t.Fatalf("templateBuildAgentURL(firecracker) error = %v", err)
+	}
+	if !strings.Contains(firecrackerURL.health, "10.11.0.1:49983") {
+		t.Fatalf("firecracker health URL = %q, want host access ip", firecrackerURL.health)
+	}
+
+	gvisorURL, err := templateBuildAgentURL(cfg, "template-build-tpl-test", networkSpec, "gvisor")
+	if err != nil {
+		t.Fatalf("templateBuildAgentURL(gvisor) error = %v", err)
+	}
+	if !strings.Contains(gvisorURL.health, "10.11.0.1:49983") {
+		t.Fatalf("gvisor health URL = %q, want host access ip", gvisorURL.health)
+	}
+}
+
+func TestTemplateBuildAgentURLFallsBackToLocalhostWithoutNetworkSpec(t *testing.T) {
+	cfg := config.Default()
+	urls, err := templateBuildAgentURL(cfg, "template-build-tpl-test", nil, "gvisor")
+	if err != nil {
+		t.Fatalf("templateBuildAgentURL() error = %v", err)
+	}
+	if urls.health != "http://127.0.0.1:49983/healthz" {
+		t.Fatalf("health URL = %q, want localhost fallback", urls.health)
+	}
+	if urls.exec != "http://127.0.0.1:49983/exec" {
+		t.Fatalf("exec URL = %q, want localhost fallback", urls.exec)
 	}
 }
 
@@ -207,6 +395,44 @@ func TestArtifactServiceTemplateCRUD(t *testing.T) {
 		t.Fatalf("DeleteTemplate() error = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "templates", "tpl-crud")); !os.IsNotExist(err) {
+		t.Fatalf("template dir stat error = %v, want not exist", err)
+	}
+}
+
+func TestArtifactServiceDeleteTemplateRemovesDirectoryRootfsTemplateDir(t *testing.T) {
+	root := t.TempDir()
+
+	st, err := sqlite.Open(context.Background(), filepath.Join(root, "novitabox.db"))
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	defer st.Close()
+
+	templateDir := filepath.Join(root, "templates", "tpl-gvisor")
+	rootfsDir := filepath.Join(templateDir, "rootfs")
+	if err := os.MkdirAll(rootfsDir, 0o755); err != nil {
+		t.Fatalf("create rootfs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(rootfsDir, "marker"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("write rootfs marker: %v", err)
+	}
+	if err := st.CreateTemplate(context.Background(), store.TemplateRecord{
+		ID:         "tpl-gvisor",
+		RootfsPath: rootfsDir,
+		Metadata: map[string]string{
+			"runtimeType": "gvisor",
+		},
+	}); err != nil {
+		t.Fatalf("create template record: %v", err)
+	}
+
+	cfg := config.Default()
+	cfg.RootDir = root
+	svc := newArtifactService(cfg, log.NewNop(), st)
+	if _, err := svc.DeleteTemplate(context.Background(), &novitaboxv1.DeleteTemplateRequest{TemplateId: "tpl-gvisor"}); err != nil {
+		t.Fatalf("DeleteTemplate() error = %v", err)
+	}
+	if _, err := os.Stat(templateDir); !os.IsNotExist(err) {
 		t.Fatalf("template dir stat error = %v, want not exist", err)
 	}
 }
@@ -378,6 +604,32 @@ func TestWithWritableTemplateRootfsRestoresOriginalAndExportsWorkCopy(t *testing
 	}
 	if string(exported) != "flushed" {
 		t.Fatalf("exported rootfs = %q, want flushed", string(exported))
+	}
+}
+
+func TestCloneOrCopyPathPreservesSymlink(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	dst := filepath.Join(root, "dst")
+	if err := os.MkdirAll(filepath.Join(src, "usr", "bin"), 0o755); err != nil {
+		t.Fatalf("create source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "usr", "bin", "sh"), []byte("shell"), 0o755); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+	if err := os.Symlink("usr/bin", filepath.Join(src, "bin")); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	if err := cloneOrCopyPath(src, dst); err != nil {
+		t.Fatalf("cloneOrCopyPath() error = %v", err)
+	}
+	target, err := os.Readlink(filepath.Join(dst, "bin"))
+	if err != nil {
+		t.Fatalf("read copied symlink: %v", err)
+	}
+	if target != "usr/bin" {
+		t.Fatalf("symlink target = %q, want usr/bin", target)
 	}
 }
 
@@ -570,6 +822,36 @@ func TestTemplateBoxdInitScript(t *testing.T) {
 	}
 	if strings.Contains(script, "exec /sbin/init") || strings.Contains(script, "exec /bin/sh") {
 		t.Fatalf("init script should keep boxd as PID 1: %s", script)
+	}
+}
+
+func TestHasUsableNameserver(t *testing.T) {
+	if hasUsableNameserver([]byte("nameserver 127.0.0.53\noptions edns0 trust-ad\n")) {
+		t.Fatalf("stub resolv.conf should not be treated as usable")
+	}
+	if !hasUsableNameserver([]byte("nameserver 10.0.0.1\nsearch local\n")) {
+		t.Fatalf("real resolv.conf should be treated as usable")
+	}
+}
+
+func TestWriteTemplateResolvConfUsesFixedResolver(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "etc", "resolv.conf")
+
+	if err := writeTemplateResolvConf(path, true); err != nil {
+		t.Fatalf("writeTemplateResolvConf() error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read resolv.conf: %v", err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "nameserver 114.114.114.114") {
+		t.Fatalf("resolv.conf = %q, want fixed resolver", got)
+	}
+	if strings.Contains(got, "1.1.1.1") || strings.Contains(got, "8.8.8.8") {
+		t.Fatalf("resolv.conf = %q, want no fallback resolvers", got)
 	}
 }
 

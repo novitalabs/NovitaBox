@@ -42,6 +42,7 @@ func (h *Handler) ListRuntimes(c *gin.Context) {
 	response.JSON(c, http.StatusOK, listRuntimesResponse{
 		Runtimes: []runtimeSummaryResponse{
 			{RuntimeType: "firecracker", Capabilities: firecrackerRuntimeCapabilities()},
+			{RuntimeType: "gvisor", Capabilities: gvisorRuntimeCapabilities()},
 			{RuntimeType: "cloud-hypervisor", Capabilities: cloudHypervisorRuntimeCapabilities()},
 		},
 	})
@@ -76,6 +77,8 @@ func runtimeCapabilities(runtimeType string) (runtimeCapabilitiesResponse, bool)
 		return firecrackerRuntimeCapabilities(), true
 	case "cloud-hypervisor":
 		return cloudHypervisorRuntimeCapabilities(), true
+	case "gvisor":
+		return gvisorRuntimeCapabilities(), true
 	default:
 		return runtimeCapabilitiesResponse{}, false
 	}
@@ -87,8 +90,8 @@ func normalizeRuntimeName(runtimeType string) string {
 		return "firecracker"
 	case "runtime-type-cloud-hypervisor", "cloud-hypervisor":
 		return "cloud-hypervisor"
-	case "runtime-type-container", "container":
-		return "container"
+	case "runtime-type-container", "container", "gvisor":
+		return "gvisor"
 	default:
 		return ""
 	}
@@ -118,4 +121,22 @@ func cloudHypervisorRuntimeCapabilities() runtimeCapabilitiesResponse {
 	caps.HotplugDisk = true
 	caps.HotplugNetwork = true
 	return caps
+}
+
+func gvisorRuntimeCapabilities() runtimeCapabilitiesResponse {
+	return runtimeCapabilitiesResponse{
+		StartFromImage:    true,
+		StartFromTemplate: true,
+		StartFromSnapshot: false,
+		Pause:             false,
+		Resume:            false,
+		FullSnapshot:      false,
+		DiffSnapshot:      false,
+		GPU:               true,
+		Vsock:             false,
+		TapNetwork:        false,
+		GracefulShutdown:  true,
+		SerialConsole:     false,
+		Jailer:            false,
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os/exec"
@@ -105,7 +106,7 @@ func (m sandboxNetworkManager) MaxSlots() (uint32, error) {
 	return vethSlots, nil
 }
 
-func (m sandboxNetworkManager) Ensure(ctx context.Context, spec *novitaboxv1.NetworkSpec) error {
+func (m sandboxNetworkManager) Prepare(ctx context.Context, runtimeType novitaboxv1.RuntimeType, spec *novitaboxv1.NetworkSpec) error {
 	if spec == nil || spec.GetNamespaceName() == "" {
 		return nil
 	}
@@ -128,7 +129,7 @@ func (m sandboxNetworkManager) Ensure(ctx context.Context, spec *novitaboxv1.Net
 	_ = runCommand(ctx, "ip", "link", "del", hostVeth)
 	_ = runCommand(ctx, "ip", "link", "del", nsPeerVeth)
 	_ = runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "link", "del", nsVeth)
-
+	_ = runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "link", "del", spec.GetTapName())
 	if err := runCommand(ctx, "ip", "link", "add", hostVeth, "type", "veth", "peer", "name", nsPeerVeth); err != nil {
 		return fmt.Errorf("create veth pair: %w", err)
 	}
@@ -157,24 +158,24 @@ func (m sandboxNetworkManager) Ensure(ctx context.Context, spec *novitaboxv1.Net
 		return fmt.Errorf("enable namespace ip forwarding: %w", err)
 	}
 
-	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "tuntap", "add", "dev", spec.GetTapName(), "mode", "tap"); err != nil && !commandOutputContains(err, "File exists") {
-		return fmt.Errorf("create tap %s: %w", spec.GetTapName(), err)
-	}
-	gatewayCIDR := spec.GetGatewayIp() + "/30"
-	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "addr", "replace", gatewayCIDR, "dev", spec.GetTapName()); err != nil {
-		return fmt.Errorf("configure tap gateway: %w", err)
-	}
-	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "link", "set", spec.GetTapName(), "up"); err != nil {
-		return fmt.Errorf("set tap up: %w", err)
-	}
 	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "route", "replace", "default", "via", veth.hostIP); err != nil {
 		return fmt.Errorf("configure namespace default route: %w", err)
 	}
-
 	if err := runCommand(ctx, "ip", "route", "replace", spec.GetHostAccessIp()+"/32", "via", veth.peerIP, "dev", hostVeth); err != nil {
 		return fmt.Errorf("configure host access route: %w", err)
 	}
-	if err := ensureNAT(ctx, spec); err != nil {
+
+	switch runtimeType {
+	case novitaboxv1.RuntimeType_RUNTIME_TYPE_CONTAINER:
+		if err := m.prepareGVisorNamespace(ctx, spec); err != nil {
+			return err
+		}
+	default:
+		if err := m.prepareFirecrackerNamespace(ctx, spec); err != nil {
+			return err
+		}
+	}
+	if err := m.prepareHostInternetNAT(ctx); err != nil {
 		return err
 	}
 
@@ -186,30 +187,117 @@ func (m sandboxNetworkManager) Cleanup(ctx context.Context, sandboxID string, sl
 	if err != nil || spec == nil {
 		return err
 	}
-	_ = removeNAT(ctx, spec)
+	_ = m.removeHostInternetNAT(ctx)
+	_ = m.removeNAT(ctx, spec)
 	_ = runCommand(ctx, "ip", "route", "del", spec.GetHostAccessIp()+"/32")
 	_ = runCommand(ctx, "ip", "link", "del", hostVethName(spec.GetNamespaceName()))
 	_ = runCommand(ctx, "ip", "netns", "del", spec.GetNamespaceName())
 	return nil
 }
 
-func ensureNAT(ctx context.Context, spec *novitaboxv1.NetworkSpec) error {
+func (m sandboxNetworkManager) ensureNAT(ctx context.Context, spec *novitaboxv1.NetworkSpec) error {
 	if err := ensureIPTablesRule(ctx, spec.GetNamespaceName(), "nat", "PREROUTING", dnatRuleArgs(spec)); err != nil {
 		return fmt.Errorf("configure sandbox DNAT: %w", err)
 	}
 	if err := ensureIPTablesRule(ctx, spec.GetNamespaceName(), "nat", "POSTROUTING", snatRuleArgs(spec)); err != nil {
 		return fmt.Errorf("configure sandbox SNAT: %w", err)
 	}
+	if err := ensureIPTablesRule(ctx, spec.GetNamespaceName(), "nat", "POSTROUTING", vethSnatRuleArgs(m.cfg.Network.VethCIDR, spec)); err != nil {
+		return fmt.Errorf("configure sandbox veth SNAT: %w", err)
+	}
 	return nil
 }
 
-func removeNAT(ctx context.Context, spec *novitaboxv1.NetworkSpec) error {
+func (m sandboxNetworkManager) prepareFirecrackerNamespace(ctx context.Context, spec *novitaboxv1.NetworkSpec) error {
+	// Firecracker keeps the guest IP inside the VM, so the netns needs tap0
+	// plus the fixed guest-facing /30.
+	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "tuntap", "add", "dev", spec.GetTapName(), "mode", "tap"); err != nil && !commandOutputContains(err, "File exists") {
+		return fmt.Errorf("create tap %s: %w", spec.GetTapName(), err)
+	}
+	gatewayCIDR := spec.GetGatewayIp() + "/30"
+	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "addr", "replace", gatewayCIDR, "dev", spec.GetTapName()); err != nil {
+		return fmt.Errorf("configure tap gateway: %w", err)
+	}
+	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "link", "set", spec.GetTapName(), "up"); err != nil {
+		return fmt.Errorf("set tap up: %w", err)
+	}
+	if err := m.ensureNAT(ctx, spec); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m sandboxNetworkManager) prepareGVisorNamespace(ctx context.Context, spec *novitaboxv1.NetworkSpec) error {
+	// gVisor runs the agent as a process inside the namespace, so we expose the
+	// agent IP directly on eth0 so the host access route can hit the process
+	// without an extra DNAT hop.
+	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "addr", "replace", spec.GetHostAccessIp()+"/32", "dev", nsVethName(spec.GetNamespaceName())); err != nil {
+		return fmt.Errorf("configure gvisor host access address: %w", err)
+	}
+	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "addr", "replace", spec.GetGuestIp()+"/30", "dev", "lo"); err != nil {
+		return fmt.Errorf("configure gvisor agent address: %w", err)
+	}
+	if err := runCommand(ctx, "ip", "netns", "exec", spec.GetNamespaceName(), "ip", "link", "set", "lo", "up"); err != nil {
+		return fmt.Errorf("set namespace loopback up: %w", err)
+	}
+	if err := m.ensureNAT(ctx, spec); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m sandboxNetworkManager) removeNAT(ctx context.Context, spec *novitaboxv1.NetworkSpec) error {
 	dnatErr := deleteIPTablesRule(ctx, spec.GetNamespaceName(), "nat", "PREROUTING", dnatRuleArgs(spec))
 	snatErr := deleteIPTablesRule(ctx, spec.GetNamespaceName(), "nat", "POSTROUTING", snatRuleArgs(spec))
+	vethSnatErr := deleteIPTablesRule(ctx, spec.GetNamespaceName(), "nat", "POSTROUTING", vethSnatRuleArgs(m.cfg.Network.VethCIDR, spec))
 	if dnatErr != nil {
 		return dnatErr
 	}
+	if vethSnatErr != nil {
+		return vethSnatErr
+	}
 	return snatErr
+}
+
+func (m sandboxNetworkManager) prepareHostInternetNAT(ctx context.Context) error {
+	dev, err := hostDefaultRouteDev(ctx)
+	if err != nil {
+		return err
+	}
+	if err := runCommand(ctx, "sysctl", "-w", "net.ipv4.ip_forward=1"); err != nil {
+		return fmt.Errorf("enable host ip forwarding: %w", err)
+	}
+	for _, cidr := range []string{m.cfg.Network.VethCIDR, m.cfg.Network.HostAccessCIDR} {
+		if cidr == "" {
+			continue
+		}
+		if err := ensureHostIPTablesRule(ctx, "nat", "POSTROUTING", []string{"-s", cidr, "-o", dev, "-j", "MASQUERADE"}); err != nil {
+			return fmt.Errorf("configure host masquerade for %s: %w", cidr, err)
+		}
+		if err := ensureHostIPTablesRule(ctx, "filter", "FORWARD", []string{"-s", cidr, "-o", dev, "-j", "ACCEPT"}); err != nil {
+			return fmt.Errorf("configure host forward outbound for %s: %w", cidr, err)
+		}
+		if err := ensureHostIPTablesRule(ctx, "filter", "FORWARD", []string{"-d", cidr, "-i", dev, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"}); err != nil {
+			return fmt.Errorf("configure host forward inbound for %s: %w", cidr, err)
+		}
+	}
+	return nil
+}
+
+func (m sandboxNetworkManager) removeHostInternetNAT(ctx context.Context) error {
+	dev, err := hostDefaultRouteDev(ctx)
+	if err != nil {
+		return err
+	}
+	for _, cidr := range []string{m.cfg.Network.HostAccessCIDR, m.cfg.Network.VethCIDR} {
+		if cidr == "" {
+			continue
+		}
+		_ = deleteHostIPTablesRule(ctx, "filter", "FORWARD", []string{"-d", cidr, "-i", dev, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"})
+		_ = deleteHostIPTablesRule(ctx, "filter", "FORWARD", []string{"-s", cidr, "-o", dev, "-j", "ACCEPT"})
+		_ = deleteHostIPTablesRule(ctx, "nat", "POSTROUTING", []string{"-s", cidr, "-o", dev, "-j", "MASQUERADE"})
+	}
+	return nil
 }
 
 func ensureIPTablesRule(ctx context.Context, netns string, table string, chain string, args []string) error {
@@ -226,12 +314,34 @@ func deleteIPTablesRule(ctx context.Context, netns string, table string, chain s
 	return runCommand(ctx, "ip", append([]string{"netns", "exec", netns, "iptables"}, del...)...)
 }
 
+func ensureHostIPTablesRule(ctx context.Context, table string, chain string, args []string) error {
+	check := append([]string{"-t", table, "-C", chain}, args...)
+	if err := runCommand(ctx, "iptables", check...); err == nil {
+		return nil
+	}
+	add := append([]string{"-t", table, "-A", chain}, args...)
+	return runCommand(ctx, "iptables", add...)
+}
+
+func deleteHostIPTablesRule(ctx context.Context, table string, chain string, args []string) error {
+	del := append([]string{"-t", table, "-D", chain}, args...)
+	return runCommand(ctx, "iptables", del...)
+}
+
 func dnatRuleArgs(spec *novitaboxv1.NetworkSpec) []string {
 	return []string{"-i", nsVethName(spec.GetNamespaceName()), "-d", spec.GetHostAccessIp() + "/32", "-j", "DNAT", "--to-destination", spec.GetGuestIp()}
 }
 
 func snatRuleArgs(spec *novitaboxv1.NetworkSpec) []string {
 	return []string{"-o", nsVethName(spec.GetNamespaceName()), "-s", spec.GetGuestIp(), "-j", "SNAT", "--to-source", spec.GetHostAccessIp()}
+}
+
+func vethSnatRuleArgs(cidr string, spec *novitaboxv1.NetworkSpec) []string {
+	addrs, err := vethAddrsForSlot(cidr, spec.GetSlot())
+	if err != nil {
+		return []string{"-j", "RETURN"}
+	}
+	return []string{"-o", nsVethName(spec.GetNamespaceName()), "-s", addrs.peerIP, "-j", "SNAT", "--to-source", spec.GetHostAccessIp()}
 }
 
 type sandboxVethAddrs struct {
@@ -322,11 +432,11 @@ func indexedIP(cidr string, index uint32) (string, error) {
 }
 
 func sandboxNetNSName(sandboxID string) string {
-	return shortName("nb-" + sandboxID)
+	return hashName("nb-", sandboxID)
 }
 
 func hostVethName(netns string) string {
-	return shortName("vh-" + netns)
+	return hashName("vh-", netns)
 }
 
 func nsVethName(netns string) string {
@@ -334,7 +444,17 @@ func nsVethName(netns string) string {
 }
 
 func nsPeerVethName(netns string) string {
-	return shortName("vp-" + netns)
+	return hashName("vp-", netns)
+}
+
+func hashName(prefix string, values ...string) string {
+	h := sha1.New()
+	for _, value := range values {
+		_, _ = h.Write([]byte(value))
+		_, _ = h.Write([]byte{0})
+	}
+	sum := h.Sum(nil)
+	return prefix + hex.EncodeToString(sum[:5])
 }
 
 func shortName(name string) string {
@@ -378,4 +498,21 @@ func commandOutputContains(err error, needle string) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), needle)
+}
+
+func hostDefaultRouteDev(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "ip", "route", "show", "default")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("show host default route: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		for i := 0; i < len(fields)-1; i++ {
+			if fields[i] == "dev" && fields[i+1] != "" {
+				return fields[i+1], nil
+			}
+		}
+	}
+	return "", fmt.Errorf("host default route device not found in %q", strings.TrimSpace(string(out)))
 }

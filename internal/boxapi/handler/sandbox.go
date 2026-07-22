@@ -30,6 +30,7 @@ type createSandboxRequest struct {
 	MCP                 map[string]any    `json:"mcp,omitempty"`
 	Metadata            map[string]string `json:"metadata,omitempty"`
 	Network             map[string]any    `json:"network,omitempty"`
+	GPU                 *uint32           `json:"gpu,omitempty"`
 	Secure              *bool             `json:"secure,omitempty"`
 	TemplateID          string            `json:"templateID"`
 	Timeout             *int32            `json:"timeout,omitempty"`
@@ -140,6 +141,12 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 			RuntimeSpec: &novitaboxv1.RuntimeSpec{
 				SandboxId:   sandboxID,
 				RuntimeType: runtimeTypeToProto(runtimeType),
+				Machine: func() *novitaboxv1.MachineSpec {
+					if req.GPU == nil {
+						return nil
+					}
+					return &novitaboxv1.MachineSpec{Gpu: *req.GPU}
+				}(),
 			},
 		})
 		if err != nil {
@@ -519,7 +526,7 @@ func runtimeTypeToProto(runtimeType string) novitaboxv1.RuntimeType {
 	switch strings.ToLower(runtimeType) {
 	case "cloud-hypervisor", "cloud_hypervisor":
 		return novitaboxv1.RuntimeType_RUNTIME_TYPE_CLOUD_HYPERVISOR
-	case "container":
+	case "container", "gvisor":
 		return novitaboxv1.RuntimeType_RUNTIME_TYPE_CONTAINER
 	default:
 		return novitaboxv1.RuntimeType_RUNTIME_TYPE_FIRECRACKER
@@ -856,8 +863,8 @@ func normalizeRuntimeType(runtimeType string) string {
 	switch strings.ToLower(runtimeType) {
 	case "runtime_type_cloud_hypervisor", "cloud-hypervisor", "cloud_hypervisor":
 		return "cloud-hypervisor"
-	case "runtime_type_container", "container":
-		return "container"
+	case "runtime_type_container", "container", "gvisor":
+		return "gvisor"
 	default:
 		return "firecracker"
 	}
@@ -868,7 +875,7 @@ func protoRuntimeType(runtimeType novitaboxv1.RuntimeType) string {
 	case novitaboxv1.RuntimeType_RUNTIME_TYPE_CLOUD_HYPERVISOR:
 		return "cloud-hypervisor"
 	case novitaboxv1.RuntimeType_RUNTIME_TYPE_CONTAINER:
-		return "container"
+		return "gvisor"
 	default:
 		return "firecracker"
 	}

@@ -58,8 +58,8 @@ func TestRouterListRuntimes(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got.Runtimes) == 0 || got.Runtimes[0].RuntimeType != "firecracker" {
-		t.Fatalf("runtimes = %#v, want firecracker first", got.Runtimes)
+	if len(got.Runtimes) < 3 || got.Runtimes[0].RuntimeType != "firecracker" || got.Runtimes[1].RuntimeType != "gvisor" {
+		t.Fatalf("runtimes = %#v, want firecracker first and gvisor second", got.Runtimes)
 	}
 }
 
@@ -574,6 +574,42 @@ func TestRouterStartTemplateBuildV2(t *testing.T) {
 	}
 	if statusGot.LogEntries == nil || statusGot.Logs == nil {
 		t.Fatalf("status response should include empty logEntries/logs arrays: %#v", statusGot)
+	}
+
+	if err := s.store.UpdateTemplateBuildStatus(t.Context(), created.TemplateID, created.BuildID, store.TemplateBuildStatusReady, store.TemplateBuildStatusError); err != nil {
+		t.Fatalf("mark build error: %v", err)
+	}
+
+	retryReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v2/templates/"+created.TemplateID+"/builds/"+created.BuildID,
+		bytes.NewBufferString(`{"fromImage":"ubuntu:22.04"}`),
+	)
+	retryReq.Header.Set("Content-Type", "application/json")
+	retryRec := httptest.NewRecorder()
+	s.router().ServeHTTP(retryRec, retryReq)
+	if retryRec.Code != http.StatusAccepted {
+		t.Fatalf("retry expected status %d, got %d body=%s", http.StatusAccepted, retryRec.Code, retryRec.Body.String())
+	}
+
+	retryStatusReq := httptest.NewRequest(
+		http.MethodGet,
+		"/templates/"+created.TemplateID+"/builds/"+created.BuildID+"/status?logsOffset=0&limit=100",
+		nil,
+	)
+	retryStatusRec := httptest.NewRecorder()
+	s.router().ServeHTTP(retryStatusRec, retryStatusReq)
+	if retryStatusRec.Code != http.StatusOK {
+		t.Fatalf("retry status expected status %d, got %d body=%s", http.StatusOK, retryStatusRec.Code, retryStatusRec.Body.String())
+	}
+	var retryStatusGot struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(retryStatusRec.Body.Bytes(), &retryStatusGot); err != nil {
+		t.Fatalf("decode retry status response: %v", err)
+	}
+	if retryStatusGot.Status != "ready" {
+		t.Fatalf("retry build status = %q, want ready", retryStatusGot.Status)
 	}
 }
 

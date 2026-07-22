@@ -22,14 +22,15 @@ import (
 )
 
 type createTemplateV3Request struct {
-	Alias      *string           `json:"alias,omitempty"`
-	CPUCount   *int32            `json:"cpuCount,omitempty"`
-	MemoryMB   *int32            `json:"memoryMB,omitempty"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
-	Name       *string           `json:"name,omitempty"`
-	Tags       *[]string         `json:"tags,omitempty"`
-	TeamID     *string           `json:"teamID,omitempty"`
-	TemplateID *string           `json:"templateID,omitempty"`
+	Alias       *string           `json:"alias,omitempty"`
+	CPUCount    *int32            `json:"cpuCount,omitempty"`
+	MemoryMB    *int32            `json:"memoryMB,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Name        *string           `json:"name,omitempty"`
+	Tags        *[]string         `json:"tags,omitempty"`
+	TeamID      *string           `json:"teamID,omitempty"`
+	TemplateID  *string           `json:"templateID,omitempty"`
+	RuntimeType *string           `json:"runtimeType,omitempty"`
 }
 
 type startTemplateBuildV2Request struct {
@@ -174,6 +175,10 @@ func (h *Handler) CreateTemplateV3(c *gin.Context) {
 
 	name, tags := splitTemplateName(input)
 	tags = append(tags, derefStringSlice(req.Tags)...)
+	runtimeType := normalizeRuntimeType(derefString(req.RuntimeType))
+	if runtimeType == "" {
+		runtimeType = "firecracker"
+	}
 
 	templateID := strings.TrimSpace(derefString(req.TemplateID))
 	if templateID == "" {
@@ -189,10 +194,14 @@ func (h *Handler) CreateTemplateV3(c *gin.Context) {
 		return
 	}
 
-	record := newTemplateRecord(h.cfg.RootDir, templateID)
+	record := newTemplateRecord(h.cfg.RootDir, templateID, runtimeType)
 	record.Aliases = []string{name}
 	record.Names = []string{name}
 	record.Metadata = req.Metadata
+	if record.Metadata == nil {
+		record.Metadata = map[string]string{}
+	}
+	record.Metadata["runtimeType"] = runtimeType
 	record.CPUCount = defaultTemplateCPUCount
 	if req.CPUCount != nil && *req.CPUCount > 0 {
 		record.CPUCount = *req.CPUCount
@@ -225,7 +234,7 @@ func (h *Handler) CreateTemplateV3(c *gin.Context) {
 	response.JSON(c, http.StatusAccepted, templateV3Response{
 		Aliases:    []string{name},
 		BuildID:    buildID,
-		Metadata:   req.Metadata,
+		Metadata:   record.Metadata,
 		Names:      []string{name},
 		Public:     false,
 		Tags:       deduplicateStrings(tags),
@@ -252,7 +261,8 @@ func (h *Handler) StartTemplateBuildV2(c *gin.Context) {
 		return
 	}
 
-	if _, err := h.store.GetTemplateBuild(c.Request.Context(), templateID, buildID); err != nil {
+	record, err := h.store.GetTemplateBuild(c.Request.Context(), templateID, buildID)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			response.Error(c, response.ErrNotFound("template build not found"))
 			return
@@ -261,18 +271,22 @@ func (h *Handler) StartTemplateBuildV2(c *gin.Context) {
 		response.Error(c, response.ErrInternal("load template build failed"))
 		return
 	}
-
+	switch record.Status {
+	case store.TemplateBuildStatusWaiting:
+		// no-op, initial state
+	case store.TemplateBuildStatusError:
+		// retryable state, handled below
+	default:
+		response.Error(c, response.ErrBadRequest("build is not retryable"))
+		return
+	}
 	if err := h.store.UpdateTemplateBuildStatus(
 		c.Request.Context(),
 		templateID,
 		buildID,
-		store.TemplateBuildStatusWaiting,
+		record.Status,
 		store.TemplateBuildStatusBuilding,
 	); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			response.Error(c, response.ErrBadRequest("build is not in waiting state"))
-			return
-		}
 		h.logger.Error("start template build failed", "template_id", templateID, "build_id", buildID, "error", err)
 		response.Error(c, response.ErrInternal("start template build failed"))
 		return
@@ -882,8 +896,15 @@ func deduplicateStrings(values []string) []string {
 	return result
 }
 
-func newTemplateRecord(rootDir string, templateID string) store.TemplateRecord {
+func newTemplateRecord(rootDir string, templateID string, runtimeType string) store.TemplateRecord {
 	dir := layout.New(rootDir).TemplateDir(templateID)
+
+	if strings.EqualFold(runtimeType, "gvisor") || strings.EqualFold(runtimeType, "container") {
+		return store.TemplateRecord{
+			ID:         templateID,
+			RootfsPath: filepath.Join(dir, "rootfs"),
+		}
+	}
 
 	return store.TemplateRecord{
 		ID:           templateID,

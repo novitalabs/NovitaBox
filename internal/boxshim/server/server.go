@@ -48,6 +48,8 @@ func newRuntimeDriver(cfg config.Config, logger *log.Logger) shimruntime.Driver 
 		return shimruntime.NewStubDriver(cfg, logger.Component("stub"))
 	case "firecracker":
 		return shimruntime.NewFirecrackerDriver(cfg, logger.Component("firecracker"))
+	case "gvisor", "container":
+		return shimruntime.NewGVisorDriver(cfg, logger.Component("gvisor"))
 	default:
 		return shimruntime.NewUnsupportedDriver(fmt.Sprintf("unknown runtime driver %q", cfg.Boxshim.RuntimeDriver))
 	}
