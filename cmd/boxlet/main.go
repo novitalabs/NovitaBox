@@ -20,6 +20,7 @@ func main() {
 		RootDir:               defaults.RootDir,
 		Addr:                  defaults.Boxlet.Addr,
 		RuntimeDriver:         defaults.Boxshim.RuntimeDriver,
+		RunscBinaryPath:       defaults.GVisor.RunscBinaryPath,
 		TemplateSnapshotWait:  defaults.Template.SnapshotWaitSecs,
 		TemplateAgentWait:     defaults.Template.AgentWaitSecs,
 		TemplateBoxdGuestPath: defaults.Template.BoxdGuestPath,
@@ -49,6 +50,7 @@ func main() {
 	cmd.Flags().IntVar(&opts.Port, "port", 0, "boxlet listen port, overrides the port in --addr")
 	cmd.Flags().StringVar(&opts.DBPath, "db-path", opts.DBPath, "SQLite database path, defaults to $root/db/novitabox.db")
 	cmd.Flags().StringVar(&opts.RuntimeDriver, "runtime-driver", opts.RuntimeDriver, "runtime driver passed to boxshim, defaults to firecracker")
+	cmd.Flags().StringVar(&opts.RunscBinaryPath, "runsc-bin", opts.RunscBinaryPath, "runsc binary path used by the gVisor runtime, defaults to $root/runsc")
 	cmd.Flags().StringVar(&opts.TemplateKernelPath, "template-kernel", opts.TemplateKernelPath, "kernel image used when building template snapshots, defaults to $root/vmlinux.bin")
 	cmd.Flags().Uint32Var(&opts.TemplateSnapshotWait, "template-snapshot-wait", opts.TemplateSnapshotWait, "seconds to wait before exporting template snapshot")
 	cmd.Flags().StringVar(&opts.TemplateAgentHealth, "template-agent-health", opts.TemplateAgentHealth, "boxd health URL used before exporting template snapshot")

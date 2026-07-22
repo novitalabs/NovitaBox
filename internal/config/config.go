@@ -12,6 +12,7 @@ type Config struct {
 	Boxd        ServiceConfig
 	Storage     StorageConfig
 	Firecracker FirecrackerConfig
+	GVisor      GVisorConfig
 	Template    TemplateBuildConfig
 	Network     NetworkConfig
 }
@@ -32,6 +33,10 @@ type StorageConfig struct {
 
 type FirecrackerConfig struct {
 	BinaryPath string
+}
+
+type GVisorConfig struct {
+	RunscBinaryPath string
 }
 
 type NetworkConfig struct {

@@ -584,7 +584,7 @@ type MachineSpec struct {
 	Vcpu          uint32                 `protobuf:"varint,1,opt,name=vcpu,proto3" json:"vcpu,omitempty"`
 	MemoryMb      uint32                 `protobuf:"varint,2,opt,name=memory_mb,json=memoryMb,proto3" json:"memory_mb,omitempty"`
 	Hugepages     bool                   `protobuf:"varint,3,opt,name=hugepages,proto3" json:"hugepages,omitempty"`
-	Gpu           bool                   `protobuf:"varint,4,opt,name=gpu,proto3" json:"gpu,omitempty"`
+	Gpu           uint32                 `protobuf:"varint,4,opt,name=gpu,proto3" json:"gpu,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -640,11 +640,11 @@ func (x *MachineSpec) GetHugepages() bool {
 	return false
 }
 
-func (x *MachineSpec) GetGpu() bool {
+func (x *MachineSpec) GetGpu() uint32 {
 	if x != nil {
 		return x.Gpu
 	}
-	return false
+	return 0
 }
 
 type KernelSpec struct {
@@ -1599,7 +1599,7 @@ const file_novitabox_v1_types_proto_rawDesc = "" +
 	"\x04vcpu\x18\x01 \x01(\rR\x04vcpu\x12\x1b\n" +
 	"\tmemory_mb\x18\x02 \x01(\rR\bmemoryMb\x12\x1c\n" +
 	"\thugepages\x18\x03 \x01(\bR\thugepages\x12\x10\n" +
-	"\x03gpu\x18\x04 \x01(\bR\x03gpu\"k\n" +
+	"\x03gpu\x18\x04 \x01(\rR\x03gpu\"k\n" +
 	"\n" +
 	"KernelSpec\x12\x1f\n" +
 	"\vkernel_path\x18\x01 \x01(\tR\n" +

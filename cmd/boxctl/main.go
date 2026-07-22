@@ -77,6 +77,7 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 	var createImageID string
 	var createSnapshotID string
 	var createRuntimeType string
+	var createGPUCount uint32
 	createCmd := &cobra.Command{
 		Use:   "create [template_id]",
 		Short: "Create a sandbox",
@@ -98,6 +99,9 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 			if createSnapshotID != "" {
 				body["snapshot_id"] = createSnapshotID
 			}
+			if createGPUCount > 0 {
+				body["gpu"] = createGPUCount
+			}
 			if createRuntimeType != "" {
 				body["runtime_type"] = createRuntimeType
 			}
@@ -105,9 +109,10 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 		},
 	}
 	createCmd.Flags().StringVar(&createTemplateID, "template", "", "template id")
+	createCmd.Flags().StringVar(&createRuntimeType, "runtime", "", "runtime type")
 	createCmd.Flags().StringVar(&createImageID, "image", "", "image id")
 	createCmd.Flags().StringVar(&createSnapshotID, "snapshot", "", "snapshot id")
-	createCmd.Flags().StringVar(&createRuntimeType, "runtime", "", "runtime type")
+	createCmd.Flags().Uint32Var(&createGPUCount, "gpu", 0, "GPU count")
 
 	cmd.AddCommand(createCmd)
 	cmd.AddCommand(listAPICommand(apiAddr, "list", "List sandboxes", "/v1/sandboxes"))

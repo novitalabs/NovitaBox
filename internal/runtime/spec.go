@@ -13,7 +13,7 @@ type Spec struct {
 type MachineSpec struct {
 	VCPU     uint32
 	MemoryMB uint32
-	GPU      bool
+	GPU      uint32
 }
 
 type RootfsSpec struct {

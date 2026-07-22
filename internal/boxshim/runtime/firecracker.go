@@ -1009,6 +1009,10 @@ func unmountUnder(root string) error {
 	return nil
 }
 
+func UnmountUnder(root string) error {
+	return unmountUnder(root)
+}
+
 func mountPointsUnder(root string) ([]string, error) {
 	root = filepath.Clean(root)
 	data, err := os.ReadFile("/proc/self/mountinfo")

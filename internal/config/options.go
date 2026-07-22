@@ -15,6 +15,7 @@ type ServiceOptions struct {
 	RuntimeDriver         string
 	BoxshimBinaryPath     string
 	FirecrackerBinaryPath string
+	RunscBinaryPath       string
 	TemplateKernelPath    string
 	TemplateSnapshotWait  uint32
 	TemplateAgentHealth   string
@@ -55,6 +56,12 @@ func ApplyServiceOptions(defaults Config, name string, opts ServiceOptions) (Con
 	}
 	if cfg.Firecracker.BinaryPath == "" {
 		cfg.Firecracker.BinaryPath = DefaultFirecrackerBinaryPath(cfg.RootDir)
+	}
+	if opts.RunscBinaryPath != "" {
+		cfg.GVisor.RunscBinaryPath = opts.RunscBinaryPath
+	}
+	if cfg.GVisor.RunscBinaryPath == "" {
+		cfg.GVisor.RunscBinaryPath = DefaultRunscBinaryPath(cfg.RootDir)
 	}
 	if opts.TemplateKernelPath != "" {
 		cfg.Template.KernelPath = opts.TemplateKernelPath
@@ -133,6 +140,7 @@ type BoxshimOptions struct {
 	SocketPath            string
 	RuntimeDriver         string
 	FirecrackerBinaryPath string
+	RunscBinaryPath       string
 	DBPath                string
 }
 
@@ -142,12 +150,16 @@ func ApplyBoxshimOptions(defaults Config, opts BoxshimOptions) Config {
 	cfg.Boxshim.SocketPath = opts.SocketPath
 	cfg.Boxshim.RuntimeDriver = opts.RuntimeDriver
 	cfg.Firecracker.BinaryPath = opts.FirecrackerBinaryPath
+	cfg.GVisor.RunscBinaryPath = opts.RunscBinaryPath
 	cfg.Storage.DBPath = opts.DBPath
 	if cfg.Storage.DBPath == "" {
 		cfg.Storage.DBPath = DefaultDBPath(cfg.RootDir)
 	}
 	if cfg.Firecracker.BinaryPath == "" {
 		cfg.Firecracker.BinaryPath = DefaultFirecrackerBinaryPath(cfg.RootDir)
+	}
+	if cfg.GVisor.RunscBinaryPath == "" {
+		cfg.GVisor.RunscBinaryPath = DefaultRunscBinaryPath(cfg.RootDir)
 	}
 
 	return cfg
@@ -175,6 +187,10 @@ func DefaultFirecrackerBinaryPath(rootDir string) string {
 
 func DefaultFirecrackerJailerBinaryPath(rootDir string) string {
 	return filepath.Join(rootDir, "jailer")
+}
+
+func DefaultRunscBinaryPath(rootDir string) string {
+	return filepath.Join(rootDir, "runsc")
 }
 
 func withPort(addr string, port int) (string, error) {

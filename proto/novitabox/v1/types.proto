@@ -82,7 +82,7 @@ message MachineSpec {
   uint32 vcpu = 1;
   uint32 memory_mb = 2;
   bool hugepages = 3;
-  bool gpu = 4;
+  uint32 gpu = 4;
 }
 
 message KernelSpec {
