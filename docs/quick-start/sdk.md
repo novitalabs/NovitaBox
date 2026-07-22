@@ -46,6 +46,13 @@ sbx.close()
 
 The same code runs in Novita production with your production API key and endpoint. No code changes required.
 
+Runtime selection and GPU allocation are NovitaBox local control-plane options. Create those templates and sandboxes with `boxctl` or the native HTTP API, then use the SDK against the resulting template or sandbox:
+
+```bash
+/data/novitabox/boxctl template build cuda-template --runtime gvisor --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+/data/novitabox/boxctl sandbox create --template tpl-xxxxxxxxxxxxxxxxxxxx --runtime gvisor --gpu 1
+```
+
 ## Verify with boxctl
 
 When SDK calls fail, first check the underlying local state:

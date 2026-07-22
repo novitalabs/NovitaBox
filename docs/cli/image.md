@@ -1,6 +1,6 @@
 # Image CLI
 
-Images are rootfs-only artifacts. They are more portable than templates because they do not include Firecracker memory state.
+Images are rootfs-only artifacts. They are more portable than templates because they do not include runtime memory state. Firecracker images use `rootfs.ext4`; gVisor images use a directory rootfs.
 
 ```bash
 boxctl image [command]
@@ -57,3 +57,8 @@ The template command also exposes conversion:
 boxctl template convert tpl-xxxxxxxxxxxxxxxxxxxx \
   --image img-xxxxxxxxxxxxxxxxxxxx
 ```
+
+Runtime notes:
+
+- Converting a Firecracker template drops `memfile` and `snapfile`.
+- Converting a gVisor template copies the directory rootfs.

@@ -29,6 +29,14 @@ curl -sS -X POST http://127.0.0.1:8080/v3/templates \
   -d '{"name":"my-template"}'
 ```
 
+Create a gVisor template record:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v3/templates \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"cuda-template","runtimeType":"gvisor"}'
+```
+
 Start a build:
 
 ```bash
@@ -74,6 +82,14 @@ Create a sandbox from a template:
 curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes \
   -H 'Content-Type: application/json' \
   -d '{"templateID":"tpl-xxxxxxxxxxxxxxxxxxxx"}'
+```
+
+Create a gVisor sandbox with one NVIDIA GPU:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes \
+  -H 'Content-Type: application/json' \
+  -d '{"templateID":"tpl-xxxxxxxxxxxxxxxxxxxx","runtime_type":"gvisor","gpu":1}'
 ```
 
 Create from an image:
@@ -151,7 +167,11 @@ curl -i -X DELETE http://127.0.0.1:8080/v1/images/img-xxxxxxxxxxxxxxxxxxxx
 curl -sS http://127.0.0.1:8080/v1/runtimes
 curl -sS http://127.0.0.1:8080/v1/runtimes/firecracker
 curl -sS http://127.0.0.1:8080/v1/runtimes/firecracker/capabilities
+curl -sS http://127.0.0.1:8080/v1/runtimes/gvisor
+curl -sS http://127.0.0.1:8080/v1/runtimes/gvisor/capabilities
 ```
+
+Runtime names accepted by the API include `firecracker`, `gvisor`, and `cloud-hypervisor`. The compatible template API uses `runtimeType`; sandbox creation uses `runtime_type`.
 
 ## Route Summary
 

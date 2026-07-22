@@ -36,6 +36,7 @@ Build steps:
 - `--exec` splits the value by whitespace and executes it directly; it can be repeated.
 - `--start-cmd` and `--ready-cmd` are passed as template lifecycle commands.
 - `--template` can be used to choose a template id; otherwise one is generated.
+- `--runtime gvisor` builds a directory-rootfs gVisor template instead of a Firecracker snapshot template.
 
 Example:
 
@@ -48,6 +49,14 @@ Example:
 ```
 
 The response includes `templateID` and `buildID`. Save the `templateID` for sandbox creation.
+
+Build a gVisor template from an NVIDIA CUDA sample image:
+
+```bash
+/data/novitabox/boxctl template build cuda-template \
+  --runtime gvisor \
+  --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+```
 
 ## List and Inspect Templates
 
@@ -77,6 +86,23 @@ You can also create from an image:
 
 ```bash
 /data/novitabox/boxctl sandbox create --image img-xxxxxxxxxxxxxxxxxxxx
+```
+
+Create a gVisor sandbox:
+
+```bash
+/data/novitabox/boxctl sandbox create \
+  --template tpl-xxxxxxxxxxxxxxxxxxxx \
+  --runtime gvisor
+```
+
+Create a gVisor sandbox with one NVIDIA GPU:
+
+```bash
+/data/novitabox/boxctl sandbox create \
+  --template tpl-xxxxxxxxxxxxxxxxxxxx \
+  --runtime gvisor \
+  --gpu 1
 ```
 
 ## Execute Commands
@@ -158,7 +184,20 @@ Convert a template to an image:
 /data/novitabox/boxctl runtime list
 /data/novitabox/boxctl runtime show firecracker
 /data/novitabox/boxctl runtime capabilities firecracker
+/data/novitabox/boxctl runtime show gvisor
+/data/novitabox/boxctl runtime capabilities gvisor
 ```
+
+## GPU Validation
+
+For gVisor GPU sandboxes:
+
+```bash
+/data/novitabox/boxctl sandbox exec sbx-xxxxxxxxxxxxxxxxxxxx /usr/bin/nvidia-smi
+/data/novitabox/boxctl sandbox exec sbx-xxxxxxxxxxxxxxxxxxxx /cuda-samples/vectorAdd
+```
+
+`nvidia-smi` validates NVIDIA driver/NVML access. `vectorAdd` validates CUDA kernel execution when the template image contains CUDA samples.
 
 ## Troubleshooting
 

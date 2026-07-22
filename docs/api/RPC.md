@@ -18,6 +18,8 @@ service BoxletSandboxService {
 }
 ```
 
+`CreateSandboxRequest.runtime_type` selects the runtime backend. `RuntimeSpec.machine.gpu` requests the number of NVIDIA GPUs for runtimes that support GPU. Today GPU is implemented for gVisor.
+
 ### Boxlet Artifact Service
 
 ```proto
@@ -34,6 +36,8 @@ service BoxletArtifactService {
 }
 ```
 
+Templates store runtime metadata. Firecracker templates use `rootfs.ext4`, `memfile`, and `snapfile`; gVisor templates use a directory rootfs and no VM snapshot files.
+
 ### Boxlet Node Service
 
 ```proto
@@ -43,6 +47,8 @@ service BoxletNodeService {
   rpc GetRuntimeCapabilities(GetRuntimeCapabilitiesRequest) returns (RuntimeCapabilities);
 }
 ```
+
+`ListRuntimes` and `GetRuntimeCapabilities` report Firecracker, gVisor, and Cloud Hypervisor capabilities. Clients should check capabilities before assuming pause/resume, snapshot, GPU, or networking behavior.
 
 ### BoxShim Service
 

@@ -57,6 +57,14 @@ Override only when publishing new runtime assets:
 RELEASE_VERSION=v0.0.2 RUNTIME_ASSET_VERSION=v0.0.3 scripts/install-release.sh
 ```
 
+gVisor support requires a `runsc` binary. Put it at `$ROOT_DIR/runsc` or start `boxlet`/`boxshim` with `--runsc-bin`.
+
+NVIDIA GPU support for gVisor additionally requires the NVIDIA container toolkit on the host and a CDI spec:
+
+```bash
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+```
+
 ### Uninstall
 
 Linux:
@@ -74,10 +82,12 @@ curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/u
 ## Requirements
 
 - Linux x86_64 or arm64
-- KVM available at `/dev/kvm`
-- TUN/TAP available at `/dev/net/tun`
+- KVM available at `/dev/kvm` for Firecracker and Cloud Hypervisor
+- TUN/TAP available at `/dev/net/tun` for Firecracker tap networking
 - Docker for building templates from Docker images
 - Btrfs or another reflink-capable filesystem for `$ROOT`
+- `runsc` for gVisor sandboxes
+- NVIDIA driver, `nvidia-ctk`, and `nvidia-cdi-hook` for gVisor GPU sandboxes
 
 The installer uses Btrfs by default.
 
@@ -138,11 +148,12 @@ The installer:
 - installs Go when needed
 - creates a Btrfs image and mounts it at `$ROOT_DIR`
 - verifies reflink support
-- checks KVM and TUN/TAP
+- checks KVM and TUN/TAP for MicroVM runtimes
 - enables IPv4 forwarding
 - builds all NovitaBox components
 - installs binaries into `$ROOT_DIR`
 - installs Firecracker and guest kernel
+- uses `$ROOT_DIR/runsc` for gVisor when present
 - writes systemd services
 - optionally configures dnsmasq
 - optionally configures Caddy with local TLS
@@ -157,6 +168,7 @@ $ROOT_DIR/boxlet
 $ROOT_DIR/boxproxy
 $ROOT_DIR/boxshim
 $ROOT_DIR/firecracker
+$ROOT_DIR/runsc        # optional, required for gVisor
 $ROOT_DIR/vmlinux.bin
 ```
 
@@ -223,6 +235,12 @@ Start services manually:
 /data/novitabox/boxproxy --root /data/novitabox --addr 127.0.0.1:8082
 ```
 
+If `runsc` is not installed at `/data/novitabox/runsc`, pass it explicitly:
+
+```bash
+/data/novitabox/boxlet --root /data/novitabox --addr 127.0.0.1:8081 --runsc-bin /usr/local/bin/runsc
+```
+
 ## Notes
 
 The Firecracker full snapshot path depends on host KVM support. On some nested virtualization hosts, template snapshot creation can fail with:
@@ -232,3 +250,13 @@ Failed to get KVM vcpu msr: 0x3a
 ```
 
 That error is not a NovitaBox network issue. It means Firecracker could not save vCPU MSR state on the current host.
+
+For gVisor GPU validation:
+
+```bash
+nvidia-smi
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+/data/novitabox/boxctl runtime capabilities gvisor
+```
+
+Inside a GPU sandbox, `nvidia-smi` should list the host GPU and CUDA samples such as `/cuda-samples/vectorAdd` should complete with `Test PASSED`.
