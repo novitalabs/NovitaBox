@@ -21,6 +21,11 @@ func main() {
 		Addr:                  defaults.Boxlet.Addr,
 		RuntimeDriver:         defaults.Boxshim.RuntimeDriver,
 		RunscBinaryPath:       defaults.GVisor.RunscBinaryPath,
+		OverlayBDContainerd:   defaults.OverlayBD.ContainerdAddress,
+		OverlayBDNamespace:    defaults.OverlayBD.Namespace,
+		OverlayBDSnapshotter:  defaults.OverlayBD.Snapshotter,
+		OverlayBDCtrBinary:    defaults.OverlayBD.CtrBinaryPath,
+		OverlayBDSocket:       defaults.OverlayBD.SnapshotterSocket,
 		TemplateSnapshotWait:  defaults.Template.SnapshotWaitSecs,
 		TemplateAgentWait:     defaults.Template.AgentWaitSecs,
 		TemplateBoxdGuestPath: defaults.Template.BoxdGuestPath,
@@ -51,6 +56,11 @@ func main() {
 	cmd.Flags().StringVar(&opts.DBPath, "db-path", opts.DBPath, "SQLite database path, defaults to $root/db/novitabox.db")
 	cmd.Flags().StringVar(&opts.RuntimeDriver, "runtime-driver", opts.RuntimeDriver, "runtime driver passed to boxshim, defaults to firecracker")
 	cmd.Flags().StringVar(&opts.RunscBinaryPath, "runsc-bin", opts.RunscBinaryPath, "runsc binary path used by the gVisor runtime, defaults to $root/runsc")
+	cmd.Flags().StringVar(&opts.OverlayBDContainerd, "overlaybd-containerd", opts.OverlayBDContainerd, "containerd socket used by OverlayBD")
+	cmd.Flags().StringVar(&opts.OverlayBDNamespace, "overlaybd-namespace", opts.OverlayBDNamespace, "containerd namespace used by OverlayBD")
+	cmd.Flags().StringVar(&opts.OverlayBDSnapshotter, "overlaybd-snapshotter", opts.OverlayBDSnapshotter, "containerd OverlayBD snapshotter name")
+	cmd.Flags().StringVar(&opts.OverlayBDCtrBinary, "overlaybd-ctr", opts.OverlayBDCtrBinary, "OverlayBD extended ctr binary path")
+	cmd.Flags().StringVar(&opts.OverlayBDSocket, "overlaybd-socket", opts.OverlayBDSocket, "OverlayBD snapshotter socket path")
 	cmd.Flags().StringVar(&opts.TemplateKernelPath, "template-kernel", opts.TemplateKernelPath, "kernel image used when building template snapshots, defaults to $root/vmlinux.bin")
 	cmd.Flags().Uint32Var(&opts.TemplateSnapshotWait, "template-snapshot-wait", opts.TemplateSnapshotWait, "seconds to wait before exporting template snapshot")
 	cmd.Flags().StringVar(&opts.TemplateAgentHealth, "template-agent-health", opts.TemplateAgentHealth, "boxd health URL used before exporting template snapshot")

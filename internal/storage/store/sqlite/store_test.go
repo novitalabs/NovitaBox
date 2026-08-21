@@ -182,6 +182,38 @@ func TestArtifactCRUD(t *testing.T) {
 	}
 }
 
+func TestOverlayBDRootfsMetadataPersistence(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	defer st.Close()
+
+	if err := st.CreateSandbox(ctx, store.SandboxRecord{
+		ID:                 "sbx-overlaybd",
+		State:              sandbox.StateCreating,
+		RuntimeType:        "gvisor",
+		RootfsProvider:     "overlaybd",
+		RootfsSourceRef:    "registry.example/team/image:tag",
+		RootfsSourceDigest: "",
+		RootfsSnapshotKey:  "novitabox-sandbox-sbx-overlaybd",
+	}); err != nil {
+		t.Fatalf("CreateSandbox() error = %v", err)
+	}
+	sandboxRecord, err := st.GetSandbox(ctx, "sbx-overlaybd")
+	if err != nil {
+		t.Fatalf("GetSandbox() error = %v", err)
+	}
+	if sandboxRecord.RootfsProvider != "overlaybd" || sandboxRecord.RootfsSnapshotKey == "" {
+		t.Fatalf("sandbox rootfs metadata = %#v", sandboxRecord)
+	}
+	if err := st.UpdateSandboxRootfsDigest(ctx, sandboxRecord.ID, "sha256:resolved"); err != nil {
+		t.Fatalf("UpdateSandboxRootfsDigest() error = %v", err)
+	}
+	sandboxRecord, err = st.GetSandbox(ctx, sandboxRecord.ID)
+	if err != nil || sandboxRecord.RootfsSourceRef != "registry.example/team/image:tag" || sandboxRecord.RootfsSourceDigest != "sha256:resolved" {
+		t.Fatalf("updated sandbox rootfs source = %#v, %v", sandboxRecord, err)
+	}
+}
+
 func TestDeleteTemplateRemovesBuilds(t *testing.T) {
 	ctx := context.Background()
 	st := openStore(t)

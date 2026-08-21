@@ -21,8 +21,9 @@ func (s *Store) CreateSandbox(ctx context.Context, record store.SandboxRecord) e
 
 	_, err := s.db.ExecContext(ctx, `
 	INSERT INTO sandboxes (
-	  sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	  sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot,
+	  rootfs_provider, rootfs_source_ref, rootfs_source_digest, rootfs_snapshot_key, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		record.ID,
 		string(record.State),
 		record.RuntimeType,
@@ -30,6 +31,10 @@ func (s *Store) CreateSandbox(ctx context.Context, record store.SandboxRecord) e
 		record.ImageID,
 		record.SnapshotID,
 		record.NetworkSlot,
+		normalizeRootfsProvider(record.RootfsProvider),
+		record.RootfsSourceRef,
+		record.RootfsSourceDigest,
+		record.RootfsSnapshotKey,
 		record.CreatedAt.Unix(),
 		record.UpdatedAt.Unix(),
 	)
@@ -42,7 +47,8 @@ func (s *Store) CreateSandbox(ctx context.Context, record store.SandboxRecord) e
 
 func (s *Store) GetSandbox(ctx context.Context, sandboxID string) (*store.SandboxRecord, error) {
 	row := s.db.QueryRowContext(ctx, `
-	SELECT sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot, created_at, updated_at
+	SELECT sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot,
+	       rootfs_provider, rootfs_source_ref, rootfs_source_digest, rootfs_snapshot_key, created_at, updated_at
 	FROM sandboxes
 	WHERE sandbox_id = ?`, sandboxID)
 
@@ -56,7 +62,8 @@ func (s *Store) GetSandbox(ctx context.Context, sandboxID string) (*store.Sandbo
 
 func (s *Store) ListSandboxes(ctx context.Context) ([]store.SandboxRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-	SELECT sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot, created_at, updated_at
+	SELECT sandbox_id, state, runtime_type, template_id, image_id, snapshot_id, network_slot,
+	       rootfs_provider, rootfs_source_ref, rootfs_source_digest, rootfs_snapshot_key, created_at, updated_at
 	FROM sandboxes
 	ORDER BY created_at DESC, sandbox_id DESC`)
 	if err != nil {
@@ -213,6 +220,24 @@ func (s *Store) ReleaseSandboxNetworkSlot(ctx context.Context, sandboxID string)
 	return nil
 }
 
+func (s *Store) UpdateSandboxRootfsDigest(ctx context.Context, sandboxID string, sourceDigest string) error {
+	result, err := s.db.ExecContext(ctx, `
+UPDATE sandboxes
+SET rootfs_source_digest = ?, updated_at = ?
+WHERE sandbox_id = ?`, sourceDigest, unixNow(), sandboxID)
+	if err != nil {
+		return fmt.Errorf("update sandbox %q rootfs digest: %w", sandboxID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read sandbox %q rootfs digest update result: %w", sandboxID, err)
+	}
+	if affected == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) DeleteSandbox(ctx context.Context, sandboxID string) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM sandboxes WHERE sandbox_id = ?", sandboxID)
 	if err != nil {
@@ -248,6 +273,10 @@ func scanSandbox(row scanner) (store.SandboxRecord, error) {
 		&record.ImageID,
 		&record.SnapshotID,
 		&record.NetworkSlot,
+		&record.RootfsProvider,
+		&record.RootfsSourceRef,
+		&record.RootfsSourceDigest,
+		&record.RootfsSnapshotKey,
 		&createdAt,
 		&updatedAt,
 	); err != nil {
@@ -258,8 +287,16 @@ func scanSandbox(row scanner) (store.SandboxRecord, error) {
 	}
 
 	record.State = sandbox.State(state)
+	record.RootfsProvider = normalizeRootfsProvider(record.RootfsProvider)
 	record.CreatedAt = unixTime(createdAt)
 	record.UpdatedAt = unixTime(updatedAt)
 
 	return record, nil
+}
+
+func normalizeRootfsProvider(provider string) string {
+	if provider == "" {
+		return "directory"
+	}
+	return provider
 }

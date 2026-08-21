@@ -57,6 +57,15 @@ boxctl sandbox create \
   --gpu 1
 ```
 
+Create a gVisor sandbox directly from a pre-converted OverlayBD image, without a template build:
+
+```bash
+boxctl sandbox create \
+  --overlaybd-image registry.example.com/team/ubuntu:overlaybd
+```
+
+The node must have containerd plus the OverlayBD snapshotter and TCMU services running. OverlayBD is selected explicitly by the sandbox rootfs request, so no separate boxlet enable flag is required.
+
 Validate GPU access:
 
 ```bash

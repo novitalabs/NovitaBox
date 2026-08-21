@@ -76,20 +76,33 @@ func TestRouterListSandboxes(t *testing.T) {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
 	}
 
-	var got struct {
-		Sandboxes []struct {
-			SandboxID string `json:"sandboxID"`
-			State     string `json:"state"`
-		} `json:"sandboxes"`
+	var got []struct {
+		SandboxID string `json:"sandboxID"`
+		State     string `json:"state"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got.Sandboxes) != 1 {
-		t.Fatalf("len(sandboxes) = %d, want 1", len(got.Sandboxes))
+	if len(got) != 1 {
+		t.Fatalf("len(sandboxes) = %d, want 1", len(got))
 	}
-	if got.Sandboxes[0].SandboxID != sandboxID || got.Sandboxes[0].State != "running" {
-		t.Fatalf("sandbox = %#v, want %s running", got.Sandboxes[0], sandboxID)
+	if got[0].SandboxID != sandboxID || got[0].State != "running" {
+		t.Fatalf("sandbox = %#v, want %s running", got[0], sandboxID)
+	}
+}
+
+func TestRouterListSandboxesReturnsEmptyArray(t *testing.T) {
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sandboxes", nil)
+	rec := httptest.NewRecorder()
+
+	s.router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != "[]" {
+		t.Fatalf("response = %s, want []", got)
 	}
 }
 

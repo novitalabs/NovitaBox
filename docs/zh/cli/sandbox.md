@@ -27,6 +27,15 @@ boxctl sandbox create \
 
 GPU 当前只在 gVisor driver 中实现，依赖宿主机 NVIDIA driver、CDI spec 和 `runsc --nvproxy`。
 
+直接从已经转换好的 OverlayBD image 创建 gVisor sandbox，不需要 template build：
+
+```bash
+boxctl sandbox create \
+  --overlaybd-image registry.example.com/team/ubuntu:overlaybd
+```
+
+节点需要部署 containerd、OverlayBD snapshotter 和 OverlayBD TCMU 服务。sandbox rootfs 请求已经显式选择 OverlayBD，因此 boxlet 不需要额外的启用开关。
+
 ## 查询和删除
 
 ```bash
@@ -95,4 +104,3 @@ boxctl sandbox balloon hinting start sbx-xxx --acknowledge-on-stop=false
 ```
 
 Balloon 只支持 Firecracker。它要求 guest kernel 启用 virtio-balloon；API 成功只代表 Firecracker 接受配置，不保证 guest 内一定有可回收页。
-

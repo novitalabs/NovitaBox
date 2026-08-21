@@ -57,6 +57,8 @@ gVisor templates are directory-rootfs templates. They do not produce Firecracker
 
 GPU support is enabled by setting `MachineSpec.gpu` to a positive count. NovitaBox reads NVIDIA CDI specs from standard locations such as `/etc/cdi/nvidia.yaml` and merges the device nodes, bind mounts, environment variables, and supported hooks into the OCI spec. The `update-ldcache` CDI hook is skipped under `runsc`; NovitaBox injects the NVIDIA library path and creates the required `libcuda.so.1` and `libnvidia-ml.so.1` links through CDI symlink hooks.
 
+gVisor can also use OverlayBD as its rootfs provider. In this mode containerd and the existing OverlayBD snapshotter own image and snapshot storage, while NovitaBox continues to own the direct `runsc` lifecycle. Sandbox creation runs OverlayBD `rpull`, creates one writable active snapshot, mounts it at `sandboxes/<id>/rootfs`, injects boxd, and starts runsc. Poweroff unmounts but preserves the snapshot; poweron remounts it; kill removes it through the snapshotter API. No NovitaBox template build is involved.
+
 ### Cloud Hypervisor
 
 Cloud Hypervisor is exposed through the same runtime abstraction. Capability fields decide which operations are available to users.

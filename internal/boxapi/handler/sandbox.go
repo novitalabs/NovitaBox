@@ -23,22 +23,29 @@ import (
 )
 
 type createSandboxRequest struct {
-	AllowInternetAccess *bool             `json:"allow_internet_access,omitempty"`
-	AutoPause           *bool             `json:"autoPause,omitempty"`
-	AutoResume          *autoResumeConfig `json:"autoResume,omitempty"`
-	EnvVars             map[string]string `json:"envVars,omitempty"`
-	MCP                 map[string]any    `json:"mcp,omitempty"`
-	Metadata            map[string]string `json:"metadata,omitempty"`
-	Network             map[string]any    `json:"network,omitempty"`
-	GPU                 *uint32           `json:"gpu,omitempty"`
-	Secure              *bool             `json:"secure,omitempty"`
-	TemplateID          string            `json:"templateID"`
-	Timeout             *int32            `json:"timeout,omitempty"`
-	VolumeMounts        *[]map[string]any `json:"volumeMounts,omitempty"`
+	AllowInternetAccess *bool                `json:"allow_internet_access,omitempty"`
+	AutoPause           *bool                `json:"autoPause,omitempty"`
+	AutoResume          *autoResumeConfig    `json:"autoResume,omitempty"`
+	EnvVars             map[string]string    `json:"envVars,omitempty"`
+	MCP                 map[string]any       `json:"mcp,omitempty"`
+	Metadata            map[string]string    `json:"metadata,omitempty"`
+	Network             map[string]any       `json:"network,omitempty"`
+	GPU                 *uint32              `json:"gpu,omitempty"`
+	Secure              *bool                `json:"secure,omitempty"`
+	TemplateID          string               `json:"templateID"`
+	Timeout             *int32               `json:"timeout,omitempty"`
+	VolumeMounts        *[]map[string]any    `json:"volumeMounts,omitempty"`
+	Rootfs              *rootfsSourceRequest `json:"rootfs,omitempty"`
 
 	ImageID     string `json:"image_id,omitempty"`
 	SnapshotID  string `json:"snapshot_id,omitempty"`
 	RuntimeType string `json:"runtime_type,omitempty"`
+}
+
+type rootfsSourceRequest struct {
+	Provider string `json:"provider"`
+	Image    string `json:"image"`
+	PullMode string `json:"pullMode,omitempty"`
 }
 
 type autoResumeConfig struct {
@@ -57,18 +64,22 @@ type sandboxResponse struct {
 }
 
 type sandboxInfoResponse struct {
-	SandboxID     string `json:"sandboxID"`
-	TemplateID    string `json:"templateID,omitempty"`
-	ImageID       string `json:"imageID,omitempty"`
-	SnapshotID    string `json:"snapshotID,omitempty"`
-	State         string `json:"state"`
-	RuntimeType   string `json:"runtimeType"`
-	CreatedAtUnix int64  `json:"createdAtUnix,omitempty"`
-	UpdatedAtUnix int64  `json:"updatedAtUnix,omitempty"`
+	SandboxID     string              `json:"sandboxID"`
+	TemplateID    string              `json:"templateID,omitempty"`
+	ImageID       string              `json:"imageID,omitempty"`
+	SnapshotID    string              `json:"snapshotID,omitempty"`
+	State         string              `json:"state"`
+	RuntimeType   string              `json:"runtimeType"`
+	Rootfs        *rootfsInfoResponse `json:"rootfs,omitempty"`
+	CreatedAtUnix int64               `json:"createdAtUnix,omitempty"`
+	UpdatedAtUnix int64               `json:"updatedAtUnix,omitempty"`
 }
 
-type listSandboxesResponse struct {
-	Sandboxes []sandboxInfoResponse `json:"sandboxes"`
+type rootfsInfoResponse struct {
+	Provider    string `json:"provider"`
+	Image       string `json:"image,omitempty"`
+	Digest      string `json:"digest,omitempty"`
+	SnapshotKey string `json:"snapshotKey,omitempty"`
 }
 
 type sandboxListItemResponse struct {
@@ -156,8 +167,8 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 		response.Error(c, response.ErrBadRequest("invalid sandbox request body"))
 		return
 	}
-	if req.TemplateID == "" && req.ImageID == "" && req.SnapshotID == "" {
-		response.Error(c, response.ErrBadRequest("templateID is required"))
+	if req.TemplateID == "" && req.ImageID == "" && req.SnapshotID == "" && req.Rootfs == nil {
+		response.Error(c, response.ErrBadRequest("templateID, imageID, snapshotID, or rootfs is required"))
 		return
 	}
 
@@ -179,14 +190,29 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 	if runtimeType == "" {
 		runtimeType = "firecracker"
 	}
+	if req.Rootfs != nil {
+		if !strings.EqualFold(req.Rootfs.Provider, "overlaybd") {
+			response.Error(c, response.ErrBadRequest("rootfs.provider must be overlaybd"))
+			return
+		}
+		if strings.TrimSpace(req.Rootfs.Image) == "" {
+			response.Error(c, response.ErrBadRequest("rootfs.image is required"))
+			return
+		}
+		if !strings.EqualFold(runtimeType, "gvisor") {
+			response.Error(c, response.ErrBadRequest("overlaybd rootfs requires runtime_type gvisor"))
+			return
+		}
+	}
 
 	if h.sandboxClient != nil {
 		created, err := h.sandboxClient.CreateSandbox(c.Request.Context(), &novitaboxv1.CreateSandboxRequest{
-			SandboxId:   sandboxID,
-			TemplateId:  req.TemplateID,
-			ImageId:     req.ImageID,
-			SnapshotId:  req.SnapshotID,
-			RuntimeType: runtimeTypeToProto(runtimeType),
+			SandboxId:    sandboxID,
+			TemplateId:   req.TemplateID,
+			ImageId:      req.ImageID,
+			SnapshotId:   req.SnapshotID,
+			RuntimeType:  runtimeTypeToProto(runtimeType),
+			RootfsSource: rootfsSourceToProto(req.Rootfs),
 			RuntimeSpec: &novitaboxv1.RuntimeSpec{
 				SandboxId:   sandboxID,
 				RuntimeType: runtimeTypeToProto(runtimeType),
@@ -227,6 +253,21 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusCreated, sandboxRecordResponse(*created))
+}
+
+func rootfsSourceToProto(source *rootfsSourceRequest) *novitaboxv1.RootfsSourceSpec {
+	if source == nil {
+		return nil
+	}
+	pullMode := strings.TrimSpace(source.PullMode)
+	if pullMode == "" {
+		pullMode = "lazy"
+	}
+	return &novitaboxv1.RootfsSourceSpec{
+		Provider: strings.ToLower(strings.TrimSpace(source.Provider)),
+		Image:    strings.TrimSpace(source.Image),
+		PullMode: strings.ToLower(pullMode),
+	}
 }
 
 func (h *Handler) UpdateSandboxBalloon(c *gin.Context) {
@@ -405,9 +446,9 @@ func (h *Handler) ListSandboxes(c *gin.Context) {
 			return
 		}
 
-		out := listSandboxesResponse{Sandboxes: make([]sandboxInfoResponse, 0, len(list.GetSandboxes()))}
+		out := make([]sandboxInfoResponse, 0, len(list.GetSandboxes()))
 		for _, item := range list.GetSandboxes() {
-			out.Sandboxes = append(out.Sandboxes, sandboxProtoInfoResponse(item))
+			out = append(out, sandboxProtoInfoResponse(item))
 		}
 		response.JSON(c, http.StatusOK, out)
 		return
@@ -419,9 +460,9 @@ func (h *Handler) ListSandboxes(c *gin.Context) {
 		return
 	}
 
-	out := listSandboxesResponse{Sandboxes: make([]sandboxInfoResponse, 0, len(records))}
+	out := make([]sandboxInfoResponse, 0, len(records))
 	for _, record := range records {
-		out.Sandboxes = append(out.Sandboxes, sandboxRecordInfoResponse(record))
+		out = append(out, sandboxRecordInfoResponse(record))
 	}
 	response.JSON(c, http.StatusOK, out)
 }
@@ -881,6 +922,7 @@ func sandboxRecordInfoResponse(record store.SandboxRecord) sandboxInfoResponse {
 		SnapshotID:    record.SnapshotID,
 		State:         string(record.State),
 		RuntimeType:   normalizeRuntimeType(record.RuntimeType),
+		Rootfs:        sandboxRecordRootfsInfoResponse(record),
 		CreatedAtUnix: record.CreatedAt.Unix(),
 		UpdatedAtUnix: record.UpdatedAt.Unix(),
 	}
@@ -894,8 +936,33 @@ func sandboxProtoInfoResponse(info *novitaboxv1.SandboxInfo) sandboxInfoResponse
 		SnapshotID:    info.GetSnapshotId(),
 		State:         protoSandboxState(info.GetState()),
 		RuntimeType:   protoRuntimeType(info.GetRuntimeType()),
+		Rootfs:        sandboxProtoRootfsInfoResponse(info.GetRootfs()),
 		CreatedAtUnix: info.GetCreatedAtUnix(),
 		UpdatedAtUnix: info.GetUpdatedAtUnix(),
+	}
+}
+
+func sandboxRecordRootfsInfoResponse(record store.SandboxRecord) *rootfsInfoResponse {
+	if record.RootfsProvider == "" || (record.RootfsProvider == "directory" && record.RootfsSourceRef == "" && record.RootfsSourceDigest == "" && record.RootfsSnapshotKey == "") {
+		return nil
+	}
+	return &rootfsInfoResponse{
+		Provider:    record.RootfsProvider,
+		Image:       record.RootfsSourceRef,
+		Digest:      record.RootfsSourceDigest,
+		SnapshotKey: record.RootfsSnapshotKey,
+	}
+}
+
+func sandboxProtoRootfsInfoResponse(rootfs *novitaboxv1.RootfsInfo) *rootfsInfoResponse {
+	if rootfs == nil || (rootfs.GetProvider() == "directory" && rootfs.GetImage() == "" && rootfs.GetDigest() == "" && rootfs.GetSnapshotKey() == "") {
+		return nil
+	}
+	return &rootfsInfoResponse{
+		Provider:    rootfs.GetProvider(),
+		Image:       rootfs.GetImage(),
+		Digest:      rootfs.GetDigest(),
+		SnapshotKey: rootfs.GetSnapshotKey(),
 	}
 }
 

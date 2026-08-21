@@ -115,6 +115,23 @@ ALTER TABLE sandboxes ADD COLUMN network_slot INTEGER NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX idx_sandboxes_network_slot ON sandboxes(network_slot) WHERE network_slot > 0;
 `,
 	},
+	{
+		version: 4,
+		sql: `
+ALTER TABLE sandboxes ADD COLUMN rootfs_provider TEXT NOT NULL DEFAULT 'directory';
+ALTER TABLE sandboxes ADD COLUMN rootfs_source_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE sandboxes ADD COLUMN rootfs_snapshot_key TEXT NOT NULL DEFAULT '';
+`,
+	},
+	{
+		version: 5,
+		sql: `
+ALTER TABLE sandboxes ADD COLUMN rootfs_source_digest TEXT NOT NULL DEFAULT '';
+UPDATE sandboxes
+SET rootfs_source_digest = rootfs_source_ref
+WHERE rootfs_provider = 'overlaybd' AND rootfs_source_ref LIKE 'sha256:%';
+`,
+	},
 }
 
 func (s *Store) migrate(ctx context.Context) error {

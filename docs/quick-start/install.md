@@ -90,6 +90,12 @@ curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/u
 - `runsc` for gVisor sandboxes
 - NVIDIA driver, `nvidia-ctk`, and `nvidia-cdi-hook` for gVisor GPU sandboxes
 
+To run a gVisor sandbox from an OverlayBD image, install the additional node-side
+dependencies described in [gVisor with OverlayBD](./overlaybd.md): `containerd`,
+`overlaybd-tcmu`, `overlaybd-snapshotter`, the OverlayBD extended `ctr`, and a
+Linux kernel with TCMU, configfs, and OverlayFS support. OverlayBD is an optional
+rootfs provider; the regular image/template flows do not require it.
+
 The installer uses Btrfs by default.
 
 ## Source Install

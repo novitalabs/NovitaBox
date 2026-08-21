@@ -20,6 +20,12 @@
 - gVisor 需要 `runsc`。
 - gVisor GPU 需要 NVIDIA driver、`nvidia-ctk`、`nvidia-cdi-hook` 和 CDI spec。
 
+如果要让 gVisor sandbox 直接使用 OverlayBD image，还需要按
+[gVisor 使用 OverlayBD rootfs](./overlaybd.md) 部署额外的节点依赖：
+`containerd`、`overlaybd-tcmu`、`overlaybd-snapshotter`、带 `rpull` 的
+OverlayBD 扩展版 `ctr`，以及启用 TCMU、configfs 和 OverlayFS 的 Linux
+内核。OverlayBD 是可选的 rootfs provider，普通 image/template 流程不依赖它。
+
 检查：
 
 ```bash
@@ -175,4 +181,3 @@ curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/u
 ```
 
 卸载会影响服务、mount、Lima VM 或本地数据。执行前确认 `$ROOT` 中没有需要保留的 template、image 和 sandbox。
-

@@ -13,6 +13,7 @@ import (
 	"github.com/novitalabs/NovitaBox/internal/config"
 	"github.com/novitalabs/NovitaBox/internal/log"
 	novitaboxv1 "github.com/novitalabs/NovitaBox/internal/pb/novitabox/v1"
+	"github.com/novitalabs/NovitaBox/internal/storage/store"
 	"github.com/novitalabs/NovitaBox/internal/storage/store/sqlite"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -55,6 +56,72 @@ func TestCreateSandboxForwardsGPUCount(t *testing.T) {
 	}
 	if got := client.createReq.GetRuntimeSpec().GetMachine().GetGpu(); got != 2 {
 		t.Fatalf("runtimeSpec.machine.gpu = %d, want 2", got)
+	}
+}
+
+func TestCreateSandboxForwardsOverlayBDRootfsSource(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.RootDir = root
+	cfg.Storage.DBPath = filepath.Join(root, "db", "novitabox.db")
+
+	st, err := sqlite.Open(context.Background(), cfg.Storage.DBPath)
+	if err != nil {
+		t.Fatalf("open sqlite store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	client := &fakeSandboxClient{}
+	h := New(cfg, log.NewNop(), st, client, nil)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", strings.NewReader(`{
+		"runtime_type":"gvisor",
+		"rootfs":{"provider":"overlaybd","image":"registry.example/team/image:tag","pullMode":"lazy"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	c.Request = req
+
+	h.CreateSandbox(c)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	source := client.createReq.GetRootfsSource()
+	if source.GetProvider() != "overlaybd" || source.GetImage() != "registry.example/team/image:tag" || source.GetPullMode() != "lazy" {
+		t.Fatalf("rootfs source = %#v", source)
+	}
+}
+
+func TestSandboxInfoResponseIncludesOverlayBDRootfsMetadata(t *testing.T) {
+	got := sandboxRecordInfoResponse(store.SandboxRecord{
+		ID:                 "sbx-obd",
+		RootfsProvider:     "overlaybd",
+		RootfsSourceRef:    "registry.example/team/image:tag",
+		RootfsSourceDigest: "sha256:resolved",
+		RootfsSnapshotKey:  "novitabox-sandbox-sbx-obd",
+	})
+
+	if got.Rootfs == nil || got.Rootfs.Provider != "overlaybd" || got.Rootfs.Image != "registry.example/team/image:tag" || got.Rootfs.Digest != "sha256:resolved" || got.Rootfs.SnapshotKey != "novitabox-sandbox-sbx-obd" {
+		t.Fatalf("rootfs response = %#v", got.Rootfs)
+	}
+}
+
+func TestSandboxProtoInfoResponseIncludesOverlayBDRootfsMetadata(t *testing.T) {
+	got := sandboxProtoInfoResponse(&novitaboxv1.SandboxInfo{
+		SandboxId: "sbx-obd",
+		Rootfs: &novitaboxv1.RootfsInfo{
+			Provider:    "overlaybd",
+			Image:       "registry.example/team/image:tag",
+			Digest:      "sha256:resolved",
+			SnapshotKey: "novitabox-sandbox-sbx-obd",
+		},
+	})
+
+	if got.Rootfs == nil || got.Rootfs.Provider != "overlaybd" || got.Rootfs.Image != "registry.example/team/image:tag" || got.Rootfs.Digest != "sha256:resolved" || got.Rootfs.SnapshotKey != "novitabox-sandbox-sbx-obd" {
+		t.Fatalf("rootfs response = %#v", got.Rootfs)
 	}
 }
 

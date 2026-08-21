@@ -175,7 +175,7 @@ func (d *GVisorDriver) start(ctx context.Context, spec *novitaboxv1.RuntimeSpec,
 	}
 
 	paths := d.paths(spec.GetSandboxId())
-	_ = unmountUnder(paths.sandboxDir)
+	_ = unmountUnderExcept(paths.sandboxDir, spec.GetRootfs().GetPath())
 	if err := os.RemoveAll(paths.bundleDir); err != nil {
 		return nil, fmt.Errorf("remove stale gvisor bundle: %w", err)
 	}
@@ -196,12 +196,12 @@ func (d *GVisorDriver) start(ctx context.Context, spec *novitaboxv1.RuntimeSpec,
 	gpuEnabled := spec.GetMachine().GetGpu() > 0
 	if err := d.runsc(ctx, paths, gpuEnabled, "create", "--bundle", paths.bundleDir, spec.GetSandboxId()); err != nil {
 		_ = d.runsc(context.Background(), paths, false, "delete", "--force", spec.GetSandboxId())
-		_ = unmountUnder(paths.sandboxDir)
+		_ = unmountUnderExcept(paths.sandboxDir, spec.GetRootfs().GetPath())
 		return nil, fmt.Errorf("create gvisor container: %w", err)
 	}
 	if err := d.runsc(ctx, paths, gpuEnabled, "start", spec.GetSandboxId()); err != nil {
 		_ = d.runsc(context.Background(), paths, false, "delete", "--force", spec.GetSandboxId())
-		_ = unmountUnder(paths.sandboxDir)
+		_ = unmountUnderExcept(paths.sandboxDir, spec.GetRootfs().GetPath())
 		return nil, fmt.Errorf("start gvisor container: %w", err)
 	}
 
@@ -229,6 +229,10 @@ func (d *GVisorDriver) start(ctx context.Context, spec *novitaboxv1.RuntimeSpec,
 func (d *GVisorDriver) stopLocked(ctx context.Context, sandboxID string, timeout time.Duration, force bool) error {
 	paths := d.paths(sandboxID)
 	defer func() {
+		if d.spec != nil && d.spec.GetRootfs() != nil {
+			_ = unmountUnderExcept(paths.sandboxDir, d.spec.GetRootfs().GetPath())
+			return
+		}
 		_ = unmountUnder(paths.sandboxDir)
 	}()
 	if timeout <= 0 {

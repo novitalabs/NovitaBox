@@ -13,6 +13,7 @@ type Config struct {
 	Storage     StorageConfig
 	Firecracker FirecrackerConfig
 	GVisor      GVisorConfig
+	OverlayBD   OverlayBDConfig
 	Template    TemplateBuildConfig
 	Network     NetworkConfig
 }
@@ -37,6 +38,15 @@ type FirecrackerConfig struct {
 
 type GVisorConfig struct {
 	RunscBinaryPath string
+}
+
+type OverlayBDConfig struct {
+	ContainerdAddress string
+	Namespace         string
+	Snapshotter       string
+	CtrBinaryPath     string
+	SnapshotterSocket string
+	PullMode          string
 }
 
 type NetworkConfig struct {
@@ -72,6 +82,14 @@ func Default() Config {
 		Boxd:        ServiceConfig{Addr: "169.254.0.21:49983"},
 		Storage:     StorageConfig{},
 		Firecracker: FirecrackerConfig{},
+		OverlayBD: OverlayBDConfig{
+			ContainerdAddress: "/run/containerd/containerd.sock",
+			Namespace:         "novitabox",
+			Snapshotter:       "overlaybd",
+			CtrBinaryPath:     "/opt/overlaybd/snapshotter/ctr",
+			SnapshotterSocket: "/run/overlaybd-snapshotter/overlaybd.sock",
+			PullMode:          "lazy",
+		},
 		Network: NetworkConfig{
 			Enabled:        true,
 			HostAccessCIDR: "10.11.0.0/16",
