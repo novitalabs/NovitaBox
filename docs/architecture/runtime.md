@@ -25,6 +25,7 @@ RuntimeSpec includes:
 - network configuration
 - agent configuration
 - jailer configuration
+- balloon configuration for runtimes that support virtio-balloon
 - labels and annotations
 
 Runtime-specific details should live in runtime driver options rather than leaking into the upper layers.
@@ -39,6 +40,7 @@ Firecracker is the default MicroVM runtime. It uses:
 - guest kernel
 - `memfile` and `snapfile` for template startup and pause/resume
 - tap networking inside a per-sandbox network namespace
+- virtio-balloon with live target updates, statistics, and free-page hinting/reporting
 
 Firecracker is the runtime to use when full VM snapshot behavior is required.
 
@@ -76,8 +78,11 @@ Each runtime exposes capabilities:
 - hotplug disk
 - live resize CPU
 - live resize memory
+- balloon
 - graceful shutdown
 - serial console
 - jailer
 
-Capabilities allow NovitaBox to degrade API behavior based on the selected runtime. For example, gVisor supports start from image/template and graceful shutdown, but does not currently support Firecracker-style pause/resume snapshots.
+Capabilities allow NovitaBox to degrade API behavior based on the selected runtime. For example, gVisor supports start from image/template and graceful shutdown, but does not currently support Firecracker-style pause/resume snapshots or balloon operations.
+
+The Firecracker boxshim driver reports `balloon=true`. The boxlet's static runtime capability helper still needs to synchronize that field, so the public runtime capability endpoint may temporarily report `balloon=false` even though a running Firecracker sandbox can serve balloon requests through its boxshim.

@@ -27,6 +27,7 @@ $ROOT/sandboxes/<sandbox_id>/
   shim.pid
   fc.sock
   firecracker.log
+  firecracker-metrics.json
   kernel -> $ROOT/vmlinux.bin
   snapshot/
 

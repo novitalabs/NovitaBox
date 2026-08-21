@@ -97,7 +97,7 @@ Create from an image:
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes \
   -H 'Content-Type: application/json' \
-  -d '{"imageID":"img-xxxxxxxxxxxxxxxxxxxx"}'
+  -d '{"image_id":"img-xxxxxxxxxxxxxxxxxxxx"}'
 ```
 
 List sandboxes:
@@ -163,7 +163,7 @@ curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/bal
 
 Hinting is a one-shot run, not a periodic task. Its status exposes Firecracker's `hostCmd` and optional `guestCmd`; command `0` is stopped, `1` is completed, and values greater than `1` identify a hinting run.
 
-Balloon endpoints return an unsupported/conflict response for gVisor and other runtimes. The guest kernel must include the virtio-balloon driver for reclamation, statistics, and free-page reporting to have an effect. Statistics include swap, fault, free/available memory, cache, HugeTLB, OOM, allocation stall, scan, and reclaim counters when the guest kernel exposes them.
+Balloon endpoints return an unsupported-runtime error for gVisor and other runtimes. The guest kernel must include the virtio-balloon driver for reclamation, statistics, and free-page reporting to have an effect. Statistics include swap, fault, free/available memory, cache, HugeTLB, OOM, allocation stall, scan, and reclaim counters when the guest kernel exposes them.
 
 Delete:
 
