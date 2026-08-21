@@ -170,3 +170,31 @@ func (s *runtimeService) Status(ctx context.Context, req *novitaboxv1.StatusRequ
 func (s *runtimeService) Capabilities(ctx context.Context, req *novitaboxv1.CapabilitiesRequest) (*novitaboxv1.RuntimeCapabilities, error) {
 	return s.driver.Capabilities(ctx, req.GetRuntimeType())
 }
+
+func (s *runtimeService) UpdateBalloon(ctx context.Context, req *novitaboxv1.UpdateBalloonRequest) (*novitaboxv1.BalloonConfig, error) {
+	return s.driver.UpdateBalloon(ctx, req.GetSandboxId(), req.GetAmountMib())
+}
+
+func (s *runtimeService) GetBalloon(ctx context.Context, req *novitaboxv1.GetBalloonRequest) (*novitaboxv1.BalloonConfig, error) {
+	return s.driver.GetBalloon(ctx, req.GetSandboxId())
+}
+
+func (s *runtimeService) GetBalloonStats(ctx context.Context, req *novitaboxv1.GetBalloonStatsRequest) (*novitaboxv1.BalloonStats, error) {
+	return s.driver.GetBalloonStats(ctx, req.GetSandboxId())
+}
+
+func (s *runtimeService) UpdateBalloonStats(ctx context.Context, req *novitaboxv1.UpdateBalloonStatsRequest) (*novitaboxv1.BalloonConfig, error) {
+	return s.driver.UpdateBalloonStats(ctx, req.GetSandboxId(), req.GetStatsPollingIntervalS())
+}
+
+func (s *runtimeService) StartBalloonHinting(ctx context.Context, req *novitaboxv1.StartBalloonHintingRequest) (*novitaboxv1.BalloonHintingStatus, error) {
+	return s.driver.StartBalloonHinting(ctx, req.GetSandboxId(), req.GetAcknowledgeOnStop())
+}
+
+func (s *runtimeService) StopBalloonHinting(ctx context.Context, req *novitaboxv1.StopBalloonHintingRequest) (*novitaboxv1.BalloonHintingStatus, error) {
+	return s.driver.StopBalloonHinting(ctx, req.GetSandboxId())
+}
+
+func (s *runtimeService) GetBalloonHinting(ctx context.Context, req *novitaboxv1.GetBalloonHintingRequest) (*novitaboxv1.BalloonHintingStatus, error) {
+	return s.driver.GetBalloonHinting(ctx, req.GetSandboxId())
+}

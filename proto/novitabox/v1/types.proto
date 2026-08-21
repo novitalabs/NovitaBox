@@ -85,6 +85,53 @@ message MachineSpec {
   uint32 gpu = 4;
 }
 
+message BalloonSpec {
+  uint32 amount_mib = 1;
+  bool deflate_on_oom = 2;
+  uint32 stats_polling_interval_s = 3;
+  bool free_page_hinting = 4;
+  bool free_page_reporting = 5;
+}
+
+message BalloonConfig {
+  uint32 amount_mib = 1;
+  bool deflate_on_oom = 2;
+  uint32 stats_polling_interval_s = 3;
+  bool free_page_hinting = 4;
+  bool free_page_reporting = 5;
+}
+
+message BalloonStats {
+  uint32 target_mib = 1;
+  uint32 actual_mib = 2;
+  uint64 swap_in = 3;
+  uint64 swap_out = 4;
+  uint64 major_faults = 5;
+  uint64 minor_faults = 6;
+  uint64 free_memory = 7;
+  uint64 total_memory = 8;
+  uint64 available_memory = 9;
+  uint64 disk_caches = 10;
+  uint64 hugetlb_allocations = 11;
+  uint64 hugetlb_failures = 12;
+  uint64 shared_memory = 13;
+  uint64 unevictable_memory = 14;
+  uint64 oom_kill = 15;
+  uint64 alloc_stall = 16;
+  uint64 async_scan = 17;
+  uint64 direct_scan = 18;
+  uint64 async_reclaim = 19;
+  uint64 direct_reclaim = 20;
+}
+
+message BalloonHintingStatus {
+  string state = 1;
+  reserved 2;
+  reserved "interval_s";
+  uint32 host_cmd = 3;
+  optional uint32 guest_cmd = 4;
+}
+
 message KernelSpec {
   string kernel_path = 1;
   string init_path = 2;
@@ -147,6 +194,7 @@ message RuntimeSpec {
   AgentSpec agent = 8;
   JailerSpec jailer = 9;
   repeated DriveSpec extra_drives = 10;
+  BalloonSpec balloon = 11;
   map<string, string> labels = 20;
   map<string, string> annotations = 21;
 }
@@ -176,6 +224,7 @@ message RuntimeCapabilities {
   bool hotplug_network = 24;
   bool live_resize_cpu = 25;
   bool live_resize_memory = 26;
+  bool balloon = 27;
   bool graceful_shutdown = 30;
   bool serial_console = 31;
   bool jailer = 32;

@@ -173,6 +173,106 @@ func (s *sandboxService) GetSandbox(ctx context.Context, req *novitaboxv1.GetSan
 	return sandboxRecordToProto(*record, runtimeTypeFromRecord(record.RuntimeType)), nil
 }
 
+func (s *sandboxService) UpdateSandboxBalloon(ctx context.Context, req *novitaboxv1.UpdateSandboxBalloonRequest) (*novitaboxv1.BalloonConfig, error) {
+	shim, closeShim, err := s.dialBalloonSandboxShim(ctx, req.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+	defer closeShim()
+	return shim.UpdateBalloon(ctx, &novitaboxv1.UpdateBalloonRequest{SandboxId: req.GetSandboxId(), AmountMib: req.GetAmountMib()})
+}
+
+func (s *sandboxService) GetSandboxBalloon(ctx context.Context, req *novitaboxv1.GetSandboxBalloonRequest) (*novitaboxv1.BalloonConfig, error) {
+	shim, closeShim, err := s.dialBalloonSandboxShim(ctx, req.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+	defer closeShim()
+	return shim.GetBalloon(ctx, &novitaboxv1.GetBalloonRequest{SandboxId: req.GetSandboxId()})
+}
+
+func (s *sandboxService) GetSandboxBalloonStats(ctx context.Context, req *novitaboxv1.GetSandboxBalloonStatsRequest) (*novitaboxv1.BalloonStats, error) {
+	shim, closeShim, err := s.dialBalloonSandboxShim(ctx, req.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+	defer closeShim()
+	return shim.GetBalloonStats(ctx, &novitaboxv1.GetBalloonStatsRequest{SandboxId: req.GetSandboxId()})
+}
+
+func (s *sandboxService) UpdateSandboxBalloonStats(ctx context.Context, req *novitaboxv1.UpdateSandboxBalloonStatsRequest) (*novitaboxv1.BalloonConfig, error) {
+	shim, closeShim, err := s.dialBalloonSandboxShim(ctx, req.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+	defer closeShim()
+	return shim.UpdateBalloonStats(ctx, &novitaboxv1.UpdateBalloonStatsRequest{
+		SandboxId:             req.GetSandboxId(),
+		StatsPollingIntervalS: req.GetStatsPollingIntervalS(),
+	})
+}
+
+func (s *sandboxService) StartSandboxBalloonHinting(ctx context.Context, req *novitaboxv1.StartSandboxBalloonHintingRequest) (*novitaboxv1.BalloonHintingStatus, error) {
+	shim, closeShim, err := s.dialBalloonSandboxShim(ctx, req.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+	defer closeShim()
+	return shim.StartBalloonHinting(ctx, &novitaboxv1.StartBalloonHintingRequest{
+		SandboxId:         req.GetSandboxId(),
+		AcknowledgeOnStop: req.GetAcknowledgeOnStop(),
+	})
+}
+
+func (s *sandboxService) StopSandboxBalloonHinting(ctx context.Context, req *novitaboxv1.StopSandboxBalloonHintingRequest) (*novitaboxv1.BalloonHintingStatus, error) {
+	shim, closeShim, err := s.dialBalloonSandboxShim(ctx, req.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+	defer closeShim()
+	return shim.StopBalloonHinting(ctx, &novitaboxv1.StopBalloonHintingRequest{SandboxId: req.GetSandboxId()})
+}
+
+func (s *sandboxService) GetSandboxBalloonHinting(ctx context.Context, req *novitaboxv1.GetSandboxBalloonHintingRequest) (*novitaboxv1.BalloonHintingStatus, error) {
+	shim, closeShim, err := s.dialBalloonSandboxShim(ctx, req.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+	defer closeShim()
+	return shim.GetBalloonHinting(ctx, &novitaboxv1.GetBalloonHintingRequest{SandboxId: req.GetSandboxId()})
+}
+
+func (s *sandboxService) dialBalloonSandboxShim(ctx context.Context, sandboxID string) (novitaboxv1.BoxShimClient, func() error, error) {
+	if sandboxID == "" {
+		return nil, nil, status.Error(codes.InvalidArgument, "sandbox_id is required")
+	}
+	record, err := s.store.GetSandbox(ctx, sandboxID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil, status.Error(codes.NotFound, "sandbox not found")
+		}
+		return nil, nil, err
+	}
+	shim, closeShim, err := s.dialSandboxShim(ctx, sandboxID)
+	if err != nil {
+		return nil, nil, err
+	}
+	caps, err := shim.Capabilities(ctx, &novitaboxv1.CapabilitiesRequest{RuntimeType: runtimeTypeFromRecord(record.RuntimeType)})
+	if err != nil {
+		_ = closeShim()
+		return nil, nil, fmt.Errorf("get runtime capabilities: %w", err)
+	}
+	if !caps.GetBalloon() {
+		_ = closeShim()
+		runtimeName := runtimeDriverFromRecord(record.RuntimeType)
+		if runtimeName == "" {
+			runtimeName = "unknown"
+		}
+		return nil, nil, status.Errorf(codes.Unimplemented, "balloon is not supported by runtime %q", runtimeName)
+	}
+	return shim, closeShim, nil
+}
+
 func (s *sandboxService) PauseSandbox(ctx context.Context, req *novitaboxv1.PauseSandboxRequest) (*novitaboxv1.SnapshotInfo, error) {
 	record, err := s.store.GetSandbox(ctx, req.GetSandboxId())
 	if err != nil {

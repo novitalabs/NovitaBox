@@ -1,7 +1,11 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,6 +83,159 @@ func TestBootArgsDoNotOverrideNetworkIPArg(t *testing.T) {
 	if !strings.Contains(got, "ip=10.0.0.2::10.0.0.1:255.255.255.0::eth0:off") {
 		t.Fatalf("boot args = %q, want existing ip arg", got)
 	}
+}
+
+func TestEffectiveBalloonSpecEnablesAllFeatures(t *testing.T) {
+	got := effectiveBalloonSpec(&novitaboxv1.BalloonSpec{AmountMib: 256})
+	if got.GetAmountMib() != 256 {
+		t.Fatalf("amount_mib = %d, want 256", got.GetAmountMib())
+	}
+	if !got.GetDeflateOnOom() {
+		t.Fatal("deflate_on_oom = false, want true")
+	}
+	if got.GetStatsPollingIntervalS() != 1 {
+		t.Fatalf("stats_polling_interval_s = %d, want 1", got.GetStatsPollingIntervalS())
+	}
+	if !got.GetFreePageHinting() {
+		t.Fatal("free_page_hinting = false, want true")
+	}
+	if !got.GetFreePageReporting() {
+		t.Fatal("free_page_reporting = false, want true")
+	}
+}
+
+func TestFirecrackerBalloonAPI(t *testing.T) {
+	client := newFirecrackerClient("unused")
+	client.baseURL = "http://firecracker.test"
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var body []byte
+		var err error
+		if r.Body != nil {
+			body, err = io.ReadAll(r.Body)
+			if err != nil {
+				return nil, err
+			}
+		}
+		newResponse := func(status int, payload any) *http.Response {
+			var data []byte
+			if payload != nil {
+				data, _ = json.Marshal(payload)
+			}
+			return &http.Response{
+				StatusCode: status,
+				Status:     http.StatusText(status),
+				Body:       io.NopCloser(bytes.NewReader(data)),
+				Header:     make(http.Header),
+				Request:    r,
+			}
+		}
+		switch r.Method + " " + r.URL.Path {
+		case "PUT /balloon":
+			var req firecrackerBalloonConfig
+			if err := json.Unmarshal(body, &req); err != nil {
+				t.Fatalf("decode balloon config: %v", err)
+			}
+			if req.AmountMiB != 0 || !req.DeflateOnOOM || req.StatsPollingIntervalS != 1 || !req.FreePageHinting || !req.FreePageReporting {
+				t.Errorf("balloon config = %#v", req)
+			}
+			return newResponse(http.StatusNoContent, nil), nil
+		case "PATCH /balloon":
+			var req firecrackerBalloonUpdate
+			if err := json.Unmarshal(body, &req); err != nil {
+				t.Fatalf("decode balloon update: %v", err)
+			}
+			if req.AmountMiB != 256 {
+				t.Errorf("balloon amount = %d, want 256", req.AmountMiB)
+			}
+			return newResponse(http.StatusNoContent, nil), nil
+		case "GET /balloon":
+			return newResponse(http.StatusOK, firecrackerBalloonConfig{AmountMiB: 256, DeflateOnOOM: true, StatsPollingIntervalS: 1, FreePageHinting: true, FreePageReporting: true}), nil
+		case "GET /balloon/statistics":
+			return newResponse(http.StatusOK, firecrackerBalloonStats{TargetMiB: 256, ActualMiB: 128, AvailableMemory: 1024}), nil
+		case "PATCH /balloon/statistics":
+			var req firecrackerBalloonStatsUpdate
+			if err := json.Unmarshal(body, &req); err != nil {
+				t.Fatalf("decode stats update: %v", err)
+			}
+			if req.StatsPollingIntervalS != 2 {
+				t.Errorf("stats interval = %d, want 2", req.StatsPollingIntervalS)
+			}
+			return newResponse(http.StatusNoContent, nil), nil
+		case "PATCH /balloon/hinting/start":
+			var req firecrackerBalloonHintingConfig
+			if err := json.Unmarshal(body, &req); err != nil {
+				t.Fatalf("decode hinting start: %v", err)
+			}
+			if !req.AcknowledgeOnStop {
+				t.Error("acknowledge_on_stop = false, want true")
+			}
+			return newResponse(http.StatusNoContent, nil), nil
+		case "PATCH /balloon/hinting/stop":
+			return newResponse(http.StatusNoContent, nil), nil
+		case "GET /balloon/hinting/status":
+			guestCmd := uint32(2)
+			return newResponse(http.StatusOK, firecrackerBalloonHintingStatus{HostCmd: 2, GuestCmd: &guestCmd}), nil
+		default:
+			return newResponse(http.StatusNotFound, nil), nil
+		}
+	})
+	ctx := context.Background()
+	if err := client.PutBalloon(ctx, firecrackerBalloonConfig{DeflateOnOOM: true, StatsPollingIntervalS: 1, FreePageHinting: true, FreePageReporting: true}); err != nil {
+		t.Fatalf("PutBalloon() error = %v", err)
+	}
+	if err := client.UpdateBalloon(ctx, 256); err != nil {
+		t.Fatalf("UpdateBalloon() error = %v", err)
+	}
+	config, err := client.GetBalloon(ctx)
+	if err != nil || config.AmountMiB != 256 {
+		t.Fatalf("GetBalloon() = %#v, %v", config, err)
+	}
+	stats, err := client.GetBalloonStats(ctx)
+	if err != nil || stats.ActualMiB != 128 {
+		t.Fatalf("GetBalloonStats() = %#v, %v", stats, err)
+	}
+	if err := client.UpdateBalloonStats(ctx, 2); err != nil {
+		t.Fatalf("UpdateBalloonStats() error = %v", err)
+	}
+	if err := client.StartBalloonHinting(ctx, true); err != nil {
+		t.Fatalf("StartBalloonHinting() error = %v", err)
+	}
+	if err := client.StopBalloonHinting(ctx); err != nil {
+		t.Fatalf("StopBalloonHinting() error = %v", err)
+	}
+	hinting, err := client.GetBalloonHinting(ctx)
+	if err != nil || hinting.HostCmd != 2 || hinting.GuestCmd == nil || *hinting.GuestCmd != 2 {
+		t.Fatalf("GetBalloonHinting() = %#v, %v", hinting, err)
+	}
+}
+
+func TestBalloonHintingState(t *testing.T) {
+	runningCmd := uint32(2)
+	otherCmd := uint32(1)
+	tests := []struct {
+		name     string
+		hostCmd  uint32
+		guestCmd *uint32
+		want     string
+	}{
+		{name: "stopped", hostCmd: 0, want: "stopped"},
+		{name: "completed", hostCmd: 1, guestCmd: &otherCmd, want: "completed"},
+		{name: "starting", hostCmd: 2, guestCmd: &otherCmd, want: "starting"},
+		{name: "running", hostCmd: 2, guestCmd: &runningCmd, want: "running"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := balloonHintingState(tt.hostCmd, tt.guestCmd); got != tt.want {
+				t.Fatalf("balloonHintingState(%d, %v) = %q, want %q", tt.hostCmd, tt.guestCmd, got, tt.want)
+			}
+		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
 }
 
 func TestWaitPostStartAliveDetectsExitedProcess(t *testing.T) {

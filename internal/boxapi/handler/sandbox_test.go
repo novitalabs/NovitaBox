@@ -102,3 +102,31 @@ func (f *fakeSandboxClient) GetSandbox(context.Context, *novitaboxv1.GetSandboxR
 func (f *fakeSandboxClient) ListSandboxes(context.Context, *novitaboxv1.ListSandboxesRequest, ...grpc.CallOption) (*novitaboxv1.ListSandboxesResponse, error) {
 	return nil, nil
 }
+
+func (f *fakeSandboxClient) UpdateSandboxBalloon(context.Context, *novitaboxv1.UpdateSandboxBalloonRequest, ...grpc.CallOption) (*novitaboxv1.BalloonConfig, error) {
+	return nil, nil
+}
+
+func (f *fakeSandboxClient) GetSandboxBalloon(context.Context, *novitaboxv1.GetSandboxBalloonRequest, ...grpc.CallOption) (*novitaboxv1.BalloonConfig, error) {
+	return nil, nil
+}
+
+func (f *fakeSandboxClient) GetSandboxBalloonStats(context.Context, *novitaboxv1.GetSandboxBalloonStatsRequest, ...grpc.CallOption) (*novitaboxv1.BalloonStats, error) {
+	return nil, nil
+}
+
+func (f *fakeSandboxClient) UpdateSandboxBalloonStats(context.Context, *novitaboxv1.UpdateSandboxBalloonStatsRequest, ...grpc.CallOption) (*novitaboxv1.BalloonConfig, error) {
+	return nil, nil
+}
+
+func (f *fakeSandboxClient) StartSandboxBalloonHinting(context.Context, *novitaboxv1.StartSandboxBalloonHintingRequest, ...grpc.CallOption) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, nil
+}
+
+func (f *fakeSandboxClient) StopSandboxBalloonHinting(context.Context, *novitaboxv1.StopSandboxBalloonHintingRequest, ...grpc.CallOption) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, nil
+}
+
+func (f *fakeSandboxClient) GetSandboxBalloonHinting(context.Context, *novitaboxv1.GetSandboxBalloonHintingRequest, ...grpc.CallOption) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, nil
+}

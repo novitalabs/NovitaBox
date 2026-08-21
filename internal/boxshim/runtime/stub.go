@@ -144,6 +144,34 @@ func (d *StubDriver) Capabilities(_ context.Context, runtimeType novitaboxv1.Run
 	return defaultCapabilities(runtimeType), nil
 }
 
+func (d *StubDriver) UpdateBalloon(context.Context, string, uint32) (*novitaboxv1.BalloonConfig, error) {
+	return nil, errors.New("balloon is not supported by this runtime")
+}
+
+func (d *StubDriver) GetBalloon(context.Context, string) (*novitaboxv1.BalloonConfig, error) {
+	return nil, errors.New("balloon is not supported by this runtime")
+}
+
+func (d *StubDriver) GetBalloonStats(context.Context, string) (*novitaboxv1.BalloonStats, error) {
+	return nil, errors.New("balloon is not supported by this runtime")
+}
+
+func (d *StubDriver) UpdateBalloonStats(context.Context, string, uint32) (*novitaboxv1.BalloonConfig, error) {
+	return nil, errors.New("balloon is not supported by this runtime")
+}
+
+func (d *StubDriver) StartBalloonHinting(context.Context, string, bool) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, errors.New("balloon hinting is not supported by this runtime")
+}
+
+func (d *StubDriver) StopBalloonHinting(context.Context, string) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, errors.New("balloon hinting is not supported by this runtime")
+}
+
+func (d *StubDriver) GetBalloonHinting(context.Context, string) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, errors.New("balloon hinting is not supported by this runtime")
+}
+
 func (d *StubDriver) transition(sandboxID string, action string, state novitaboxv1.RuntimeState) (*novitaboxv1.RuntimeInfo, error) {
 	if sandboxID == "" {
 		return nil, errors.New("sandbox_id is required")

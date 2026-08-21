@@ -20,15 +20,22 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BoxletSandboxService_CreateSandbox_FullMethodName = "/novitabox.v1.BoxletSandboxService/CreateSandbox"
-	BoxletSandboxService_PauseSandbox_FullMethodName  = "/novitabox.v1.BoxletSandboxService/PauseSandbox"
-	BoxletSandboxService_ResumeSandbox_FullMethodName = "/novitabox.v1.BoxletSandboxService/ResumeSandbox"
-	BoxletSandboxService_KillSandbox_FullMethodName   = "/novitabox.v1.BoxletSandboxService/KillSandbox"
-	BoxletSandboxService_StartSandbox_FullMethodName  = "/novitabox.v1.BoxletSandboxService/StartSandbox"
-	BoxletSandboxService_StopSandbox_FullMethodName   = "/novitabox.v1.BoxletSandboxService/StopSandbox"
-	BoxletSandboxService_RebootSandbox_FullMethodName = "/novitabox.v1.BoxletSandboxService/RebootSandbox"
-	BoxletSandboxService_GetSandbox_FullMethodName    = "/novitabox.v1.BoxletSandboxService/GetSandbox"
-	BoxletSandboxService_ListSandboxes_FullMethodName = "/novitabox.v1.BoxletSandboxService/ListSandboxes"
+	BoxletSandboxService_CreateSandbox_FullMethodName              = "/novitabox.v1.BoxletSandboxService/CreateSandbox"
+	BoxletSandboxService_PauseSandbox_FullMethodName               = "/novitabox.v1.BoxletSandboxService/PauseSandbox"
+	BoxletSandboxService_ResumeSandbox_FullMethodName              = "/novitabox.v1.BoxletSandboxService/ResumeSandbox"
+	BoxletSandboxService_KillSandbox_FullMethodName                = "/novitabox.v1.BoxletSandboxService/KillSandbox"
+	BoxletSandboxService_StartSandbox_FullMethodName               = "/novitabox.v1.BoxletSandboxService/StartSandbox"
+	BoxletSandboxService_StopSandbox_FullMethodName                = "/novitabox.v1.BoxletSandboxService/StopSandbox"
+	BoxletSandboxService_RebootSandbox_FullMethodName              = "/novitabox.v1.BoxletSandboxService/RebootSandbox"
+	BoxletSandboxService_GetSandbox_FullMethodName                 = "/novitabox.v1.BoxletSandboxService/GetSandbox"
+	BoxletSandboxService_ListSandboxes_FullMethodName              = "/novitabox.v1.BoxletSandboxService/ListSandboxes"
+	BoxletSandboxService_UpdateSandboxBalloon_FullMethodName       = "/novitabox.v1.BoxletSandboxService/UpdateSandboxBalloon"
+	BoxletSandboxService_GetSandboxBalloon_FullMethodName          = "/novitabox.v1.BoxletSandboxService/GetSandboxBalloon"
+	BoxletSandboxService_GetSandboxBalloonStats_FullMethodName     = "/novitabox.v1.BoxletSandboxService/GetSandboxBalloonStats"
+	BoxletSandboxService_UpdateSandboxBalloonStats_FullMethodName  = "/novitabox.v1.BoxletSandboxService/UpdateSandboxBalloonStats"
+	BoxletSandboxService_StartSandboxBalloonHinting_FullMethodName = "/novitabox.v1.BoxletSandboxService/StartSandboxBalloonHinting"
+	BoxletSandboxService_StopSandboxBalloonHinting_FullMethodName  = "/novitabox.v1.BoxletSandboxService/StopSandboxBalloonHinting"
+	BoxletSandboxService_GetSandboxBalloonHinting_FullMethodName   = "/novitabox.v1.BoxletSandboxService/GetSandboxBalloonHinting"
 )
 
 // BoxletSandboxServiceClient is the client API for BoxletSandboxService service.
@@ -44,6 +51,13 @@ type BoxletSandboxServiceClient interface {
 	RebootSandbox(ctx context.Context, in *RebootSandboxRequest, opts ...grpc.CallOption) (*SandboxInfo, error)
 	GetSandbox(ctx context.Context, in *GetSandboxRequest, opts ...grpc.CallOption) (*SandboxInfo, error)
 	ListSandboxes(ctx context.Context, in *ListSandboxesRequest, opts ...grpc.CallOption) (*ListSandboxesResponse, error)
+	UpdateSandboxBalloon(ctx context.Context, in *UpdateSandboxBalloonRequest, opts ...grpc.CallOption) (*BalloonConfig, error)
+	GetSandboxBalloon(ctx context.Context, in *GetSandboxBalloonRequest, opts ...grpc.CallOption) (*BalloonConfig, error)
+	GetSandboxBalloonStats(ctx context.Context, in *GetSandboxBalloonStatsRequest, opts ...grpc.CallOption) (*BalloonStats, error)
+	UpdateSandboxBalloonStats(ctx context.Context, in *UpdateSandboxBalloonStatsRequest, opts ...grpc.CallOption) (*BalloonConfig, error)
+	StartSandboxBalloonHinting(ctx context.Context, in *StartSandboxBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error)
+	StopSandboxBalloonHinting(ctx context.Context, in *StopSandboxBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error)
+	GetSandboxBalloonHinting(ctx context.Context, in *GetSandboxBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error)
 }
 
 type boxletSandboxServiceClient struct {
@@ -144,6 +158,76 @@ func (c *boxletSandboxServiceClient) ListSandboxes(ctx context.Context, in *List
 	return out, nil
 }
 
+func (c *boxletSandboxServiceClient) UpdateSandboxBalloon(ctx context.Context, in *UpdateSandboxBalloonRequest, opts ...grpc.CallOption) (*BalloonConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonConfig)
+	err := c.cc.Invoke(ctx, BoxletSandboxService_UpdateSandboxBalloon_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxletSandboxServiceClient) GetSandboxBalloon(ctx context.Context, in *GetSandboxBalloonRequest, opts ...grpc.CallOption) (*BalloonConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonConfig)
+	err := c.cc.Invoke(ctx, BoxletSandboxService_GetSandboxBalloon_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxletSandboxServiceClient) GetSandboxBalloonStats(ctx context.Context, in *GetSandboxBalloonStatsRequest, opts ...grpc.CallOption) (*BalloonStats, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonStats)
+	err := c.cc.Invoke(ctx, BoxletSandboxService_GetSandboxBalloonStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxletSandboxServiceClient) UpdateSandboxBalloonStats(ctx context.Context, in *UpdateSandboxBalloonStatsRequest, opts ...grpc.CallOption) (*BalloonConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonConfig)
+	err := c.cc.Invoke(ctx, BoxletSandboxService_UpdateSandboxBalloonStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxletSandboxServiceClient) StartSandboxBalloonHinting(ctx context.Context, in *StartSandboxBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonHintingStatus)
+	err := c.cc.Invoke(ctx, BoxletSandboxService_StartSandboxBalloonHinting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxletSandboxServiceClient) StopSandboxBalloonHinting(ctx context.Context, in *StopSandboxBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonHintingStatus)
+	err := c.cc.Invoke(ctx, BoxletSandboxService_StopSandboxBalloonHinting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxletSandboxServiceClient) GetSandboxBalloonHinting(ctx context.Context, in *GetSandboxBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonHintingStatus)
+	err := c.cc.Invoke(ctx, BoxletSandboxService_GetSandboxBalloonHinting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BoxletSandboxServiceServer is the server API for BoxletSandboxService service.
 // All implementations must embed UnimplementedBoxletSandboxServiceServer
 // for forward compatibility.
@@ -157,6 +241,13 @@ type BoxletSandboxServiceServer interface {
 	RebootSandbox(context.Context, *RebootSandboxRequest) (*SandboxInfo, error)
 	GetSandbox(context.Context, *GetSandboxRequest) (*SandboxInfo, error)
 	ListSandboxes(context.Context, *ListSandboxesRequest) (*ListSandboxesResponse, error)
+	UpdateSandboxBalloon(context.Context, *UpdateSandboxBalloonRequest) (*BalloonConfig, error)
+	GetSandboxBalloon(context.Context, *GetSandboxBalloonRequest) (*BalloonConfig, error)
+	GetSandboxBalloonStats(context.Context, *GetSandboxBalloonStatsRequest) (*BalloonStats, error)
+	UpdateSandboxBalloonStats(context.Context, *UpdateSandboxBalloonStatsRequest) (*BalloonConfig, error)
+	StartSandboxBalloonHinting(context.Context, *StartSandboxBalloonHintingRequest) (*BalloonHintingStatus, error)
+	StopSandboxBalloonHinting(context.Context, *StopSandboxBalloonHintingRequest) (*BalloonHintingStatus, error)
+	GetSandboxBalloonHinting(context.Context, *GetSandboxBalloonHintingRequest) (*BalloonHintingStatus, error)
 	mustEmbedUnimplementedBoxletSandboxServiceServer()
 }
 
@@ -193,6 +284,27 @@ func (UnimplementedBoxletSandboxServiceServer) GetSandbox(context.Context, *GetS
 }
 func (UnimplementedBoxletSandboxServiceServer) ListSandboxes(context.Context, *ListSandboxesRequest) (*ListSandboxesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSandboxes not implemented")
+}
+func (UnimplementedBoxletSandboxServiceServer) UpdateSandboxBalloon(context.Context, *UpdateSandboxBalloonRequest) (*BalloonConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateSandboxBalloon not implemented")
+}
+func (UnimplementedBoxletSandboxServiceServer) GetSandboxBalloon(context.Context, *GetSandboxBalloonRequest) (*BalloonConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSandboxBalloon not implemented")
+}
+func (UnimplementedBoxletSandboxServiceServer) GetSandboxBalloonStats(context.Context, *GetSandboxBalloonStatsRequest) (*BalloonStats, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSandboxBalloonStats not implemented")
+}
+func (UnimplementedBoxletSandboxServiceServer) UpdateSandboxBalloonStats(context.Context, *UpdateSandboxBalloonStatsRequest) (*BalloonConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateSandboxBalloonStats not implemented")
+}
+func (UnimplementedBoxletSandboxServiceServer) StartSandboxBalloonHinting(context.Context, *StartSandboxBalloonHintingRequest) (*BalloonHintingStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartSandboxBalloonHinting not implemented")
+}
+func (UnimplementedBoxletSandboxServiceServer) StopSandboxBalloonHinting(context.Context, *StopSandboxBalloonHintingRequest) (*BalloonHintingStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method StopSandboxBalloonHinting not implemented")
+}
+func (UnimplementedBoxletSandboxServiceServer) GetSandboxBalloonHinting(context.Context, *GetSandboxBalloonHintingRequest) (*BalloonHintingStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSandboxBalloonHinting not implemented")
 }
 func (UnimplementedBoxletSandboxServiceServer) mustEmbedUnimplementedBoxletSandboxServiceServer() {}
 func (UnimplementedBoxletSandboxServiceServer) testEmbeddedByValue()                              {}
@@ -377,6 +489,132 @@ func _BoxletSandboxService_ListSandboxes_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BoxletSandboxService_UpdateSandboxBalloon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateSandboxBalloonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxletSandboxServiceServer).UpdateSandboxBalloon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxletSandboxService_UpdateSandboxBalloon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxletSandboxServiceServer).UpdateSandboxBalloon(ctx, req.(*UpdateSandboxBalloonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxletSandboxService_GetSandboxBalloon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSandboxBalloonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxletSandboxServiceServer).GetSandboxBalloon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxletSandboxService_GetSandboxBalloon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxletSandboxServiceServer).GetSandboxBalloon(ctx, req.(*GetSandboxBalloonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxletSandboxService_GetSandboxBalloonStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSandboxBalloonStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxletSandboxServiceServer).GetSandboxBalloonStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxletSandboxService_GetSandboxBalloonStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxletSandboxServiceServer).GetSandboxBalloonStats(ctx, req.(*GetSandboxBalloonStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxletSandboxService_UpdateSandboxBalloonStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateSandboxBalloonStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxletSandboxServiceServer).UpdateSandboxBalloonStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxletSandboxService_UpdateSandboxBalloonStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxletSandboxServiceServer).UpdateSandboxBalloonStats(ctx, req.(*UpdateSandboxBalloonStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxletSandboxService_StartSandboxBalloonHinting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartSandboxBalloonHintingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxletSandboxServiceServer).StartSandboxBalloonHinting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxletSandboxService_StartSandboxBalloonHinting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxletSandboxServiceServer).StartSandboxBalloonHinting(ctx, req.(*StartSandboxBalloonHintingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxletSandboxService_StopSandboxBalloonHinting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopSandboxBalloonHintingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxletSandboxServiceServer).StopSandboxBalloonHinting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxletSandboxService_StopSandboxBalloonHinting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxletSandboxServiceServer).StopSandboxBalloonHinting(ctx, req.(*StopSandboxBalloonHintingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxletSandboxService_GetSandboxBalloonHinting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSandboxBalloonHintingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxletSandboxServiceServer).GetSandboxBalloonHinting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxletSandboxService_GetSandboxBalloonHinting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxletSandboxServiceServer).GetSandboxBalloonHinting(ctx, req.(*GetSandboxBalloonHintingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BoxletSandboxService_ServiceDesc is the grpc.ServiceDesc for BoxletSandboxService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -419,6 +657,34 @@ var BoxletSandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListSandboxes",
 			Handler:    _BoxletSandboxService_ListSandboxes_Handler,
+		},
+		{
+			MethodName: "UpdateSandboxBalloon",
+			Handler:    _BoxletSandboxService_UpdateSandboxBalloon_Handler,
+		},
+		{
+			MethodName: "GetSandboxBalloon",
+			Handler:    _BoxletSandboxService_GetSandboxBalloon_Handler,
+		},
+		{
+			MethodName: "GetSandboxBalloonStats",
+			Handler:    _BoxletSandboxService_GetSandboxBalloonStats_Handler,
+		},
+		{
+			MethodName: "UpdateSandboxBalloonStats",
+			Handler:    _BoxletSandboxService_UpdateSandboxBalloonStats_Handler,
+		},
+		{
+			MethodName: "StartSandboxBalloonHinting",
+			Handler:    _BoxletSandboxService_StartSandboxBalloonHinting_Handler,
+		},
+		{
+			MethodName: "StopSandboxBalloonHinting",
+			Handler:    _BoxletSandboxService_StopSandboxBalloonHinting_Handler,
+		},
+		{
+			MethodName: "GetSandboxBalloonHinting",
+			Handler:    _BoxletSandboxService_GetSandboxBalloonHinting_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

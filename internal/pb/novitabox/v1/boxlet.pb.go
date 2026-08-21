@@ -534,6 +534,338 @@ func (x *ListSandboxesResponse) GetSandboxes() []*SandboxInfo {
 	return nil
 }
 
+type UpdateSandboxBalloonRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	AmountMib     uint32                 `protobuf:"varint,2,opt,name=amount_mib,json=amountMib,proto3" json:"amount_mib,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateSandboxBalloonRequest) Reset() {
+	*x = UpdateSandboxBalloonRequest{}
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateSandboxBalloonRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateSandboxBalloonRequest) ProtoMessage() {}
+
+func (x *UpdateSandboxBalloonRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateSandboxBalloonRequest.ProtoReflect.Descriptor instead.
+func (*UpdateSandboxBalloonRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UpdateSandboxBalloonRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+func (x *UpdateSandboxBalloonRequest) GetAmountMib() uint32 {
+	if x != nil {
+		return x.AmountMib
+	}
+	return 0
+}
+
+type GetSandboxBalloonRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSandboxBalloonRequest) Reset() {
+	*x = GetSandboxBalloonRequest{}
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSandboxBalloonRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSandboxBalloonRequest) ProtoMessage() {}
+
+func (x *GetSandboxBalloonRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSandboxBalloonRequest.ProtoReflect.Descriptor instead.
+func (*GetSandboxBalloonRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetSandboxBalloonRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+type GetSandboxBalloonStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSandboxBalloonStatsRequest) Reset() {
+	*x = GetSandboxBalloonStatsRequest{}
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSandboxBalloonStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSandboxBalloonStatsRequest) ProtoMessage() {}
+
+func (x *GetSandboxBalloonStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSandboxBalloonStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetSandboxBalloonStatsRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetSandboxBalloonStatsRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+type UpdateSandboxBalloonStatsRequest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId             string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	StatsPollingIntervalS uint32                 `protobuf:"varint,2,opt,name=stats_polling_interval_s,json=statsPollingIntervalS,proto3" json:"stats_polling_interval_s,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *UpdateSandboxBalloonStatsRequest) Reset() {
+	*x = UpdateSandboxBalloonStatsRequest{}
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateSandboxBalloonStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateSandboxBalloonStatsRequest) ProtoMessage() {}
+
+func (x *UpdateSandboxBalloonStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateSandboxBalloonStatsRequest.ProtoReflect.Descriptor instead.
+func (*UpdateSandboxBalloonStatsRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *UpdateSandboxBalloonStatsRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+func (x *UpdateSandboxBalloonStatsRequest) GetStatsPollingIntervalS() uint32 {
+	if x != nil {
+		return x.StatsPollingIntervalS
+	}
+	return 0
+}
+
+type StartSandboxBalloonHintingRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId         string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	AcknowledgeOnStop bool                   `protobuf:"varint,3,opt,name=acknowledge_on_stop,json=acknowledgeOnStop,proto3" json:"acknowledge_on_stop,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *StartSandboxBalloonHintingRequest) Reset() {
+	*x = StartSandboxBalloonHintingRequest{}
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartSandboxBalloonHintingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartSandboxBalloonHintingRequest) ProtoMessage() {}
+
+func (x *StartSandboxBalloonHintingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartSandboxBalloonHintingRequest.ProtoReflect.Descriptor instead.
+func (*StartSandboxBalloonHintingRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *StartSandboxBalloonHintingRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+func (x *StartSandboxBalloonHintingRequest) GetAcknowledgeOnStop() bool {
+	if x != nil {
+		return x.AcknowledgeOnStop
+	}
+	return false
+}
+
+type StopSandboxBalloonHintingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopSandboxBalloonHintingRequest) Reset() {
+	*x = StopSandboxBalloonHintingRequest{}
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopSandboxBalloonHintingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopSandboxBalloonHintingRequest) ProtoMessage() {}
+
+func (x *StopSandboxBalloonHintingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopSandboxBalloonHintingRequest.ProtoReflect.Descriptor instead.
+func (*StopSandboxBalloonHintingRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *StopSandboxBalloonHintingRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+type GetSandboxBalloonHintingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSandboxBalloonHintingRequest) Reset() {
+	*x = GetSandboxBalloonHintingRequest{}
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSandboxBalloonHintingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSandboxBalloonHintingRequest) ProtoMessage() {}
+
+func (x *GetSandboxBalloonHintingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSandboxBalloonHintingRequest.ProtoReflect.Descriptor instead.
+func (*GetSandboxBalloonHintingRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetSandboxBalloonHintingRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
 type CreateTemplateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TemplateId    string                 `protobuf:"bytes,1,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
@@ -551,7 +883,7 @@ type CreateTemplateRequest struct {
 
 func (x *CreateTemplateRequest) Reset() {
 	*x = CreateTemplateRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[10]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -563,7 +895,7 @@ func (x *CreateTemplateRequest) String() string {
 func (*CreateTemplateRequest) ProtoMessage() {}
 
 func (x *CreateTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[10]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -576,7 +908,7 @@ func (x *CreateTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTemplateRequest.ProtoReflect.Descriptor instead.
 func (*CreateTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{10}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CreateTemplateRequest) GetTemplateId() string {
@@ -654,7 +986,7 @@ type TemplateBuildStep struct {
 
 func (x *TemplateBuildStep) Reset() {
 	*x = TemplateBuildStep{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[11]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -666,7 +998,7 @@ func (x *TemplateBuildStep) String() string {
 func (*TemplateBuildStep) ProtoMessage() {}
 
 func (x *TemplateBuildStep) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[11]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -679,7 +1011,7 @@ func (x *TemplateBuildStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TemplateBuildStep.ProtoReflect.Descriptor instead.
 func (*TemplateBuildStep) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{11}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *TemplateBuildStep) GetType() string {
@@ -719,7 +1051,7 @@ type DeleteTemplateRequest struct {
 
 func (x *DeleteTemplateRequest) Reset() {
 	*x = DeleteTemplateRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[12]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -731,7 +1063,7 @@ func (x *DeleteTemplateRequest) String() string {
 func (*DeleteTemplateRequest) ProtoMessage() {}
 
 func (x *DeleteTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[12]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -744,7 +1076,7 @@ func (x *DeleteTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTemplateRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{12}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DeleteTemplateRequest) GetTemplateId() string {
@@ -763,7 +1095,7 @@ type GetTemplateRequest struct {
 
 func (x *GetTemplateRequest) Reset() {
 	*x = GetTemplateRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[13]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -775,7 +1107,7 @@ func (x *GetTemplateRequest) String() string {
 func (*GetTemplateRequest) ProtoMessage() {}
 
 func (x *GetTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[13]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -788,7 +1120,7 @@ func (x *GetTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTemplateRequest.ProtoReflect.Descriptor instead.
 func (*GetTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{13}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetTemplateRequest) GetTemplateId() string {
@@ -807,7 +1139,7 @@ type ListTemplatesRequest struct {
 
 func (x *ListTemplatesRequest) Reset() {
 	*x = ListTemplatesRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[14]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -819,7 +1151,7 @@ func (x *ListTemplatesRequest) String() string {
 func (*ListTemplatesRequest) ProtoMessage() {}
 
 func (x *ListTemplatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[14]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -832,7 +1164,7 @@ func (x *ListTemplatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTemplatesRequest.ProtoReflect.Descriptor instead.
 func (*ListTemplatesRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{14}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListTemplatesRequest) GetLabelSelector() map[string]string {
@@ -851,7 +1183,7 @@ type ListTemplatesResponse struct {
 
 func (x *ListTemplatesResponse) Reset() {
 	*x = ListTemplatesResponse{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[15]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -863,7 +1195,7 @@ func (x *ListTemplatesResponse) String() string {
 func (*ListTemplatesResponse) ProtoMessage() {}
 
 func (x *ListTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[15]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -876,7 +1208,7 @@ func (x *ListTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{15}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListTemplatesResponse) GetTemplates() []*TemplateInfo {
@@ -897,7 +1229,7 @@ type CreateImageRequest struct {
 
 func (x *CreateImageRequest) Reset() {
 	*x = CreateImageRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[16]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -909,7 +1241,7 @@ func (x *CreateImageRequest) String() string {
 func (*CreateImageRequest) ProtoMessage() {}
 
 func (x *CreateImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[16]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -922,7 +1254,7 @@ func (x *CreateImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateImageRequest.ProtoReflect.Descriptor instead.
 func (*CreateImageRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{16}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CreateImageRequest) GetImageId() string {
@@ -955,7 +1287,7 @@ type DeleteImageRequest struct {
 
 func (x *DeleteImageRequest) Reset() {
 	*x = DeleteImageRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[17]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -967,7 +1299,7 @@ func (x *DeleteImageRequest) String() string {
 func (*DeleteImageRequest) ProtoMessage() {}
 
 func (x *DeleteImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[17]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -980,7 +1312,7 @@ func (x *DeleteImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteImageRequest.ProtoReflect.Descriptor instead.
 func (*DeleteImageRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{17}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DeleteImageRequest) GetImageId() string {
@@ -999,7 +1331,7 @@ type GetImageRequest struct {
 
 func (x *GetImageRequest) Reset() {
 	*x = GetImageRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[18]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1011,7 +1343,7 @@ func (x *GetImageRequest) String() string {
 func (*GetImageRequest) ProtoMessage() {}
 
 func (x *GetImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[18]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1024,7 +1356,7 @@ func (x *GetImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetImageRequest.ProtoReflect.Descriptor instead.
 func (*GetImageRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{18}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetImageRequest) GetImageId() string {
@@ -1043,7 +1375,7 @@ type ListImagesRequest struct {
 
 func (x *ListImagesRequest) Reset() {
 	*x = ListImagesRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[19]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1055,7 +1387,7 @@ func (x *ListImagesRequest) String() string {
 func (*ListImagesRequest) ProtoMessage() {}
 
 func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[19]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1068,7 +1400,7 @@ func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesRequest.ProtoReflect.Descriptor instead.
 func (*ListImagesRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{19}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListImagesRequest) GetLabelSelector() map[string]string {
@@ -1087,7 +1419,7 @@ type ListImagesResponse struct {
 
 func (x *ListImagesResponse) Reset() {
 	*x = ListImagesResponse{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[20]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1099,7 +1431,7 @@ func (x *ListImagesResponse) String() string {
 func (*ListImagesResponse) ProtoMessage() {}
 
 func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[20]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1112,7 +1444,7 @@ func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesResponse.ProtoReflect.Descriptor instead.
 func (*ListImagesResponse) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{20}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListImagesResponse) GetImages() []*ImageInfo {
@@ -1130,7 +1462,7 @@ type NodeStatusRequest struct {
 
 func (x *NodeStatusRequest) Reset() {
 	*x = NodeStatusRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[21]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1142,7 +1474,7 @@ func (x *NodeStatusRequest) String() string {
 func (*NodeStatusRequest) ProtoMessage() {}
 
 func (x *NodeStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[21]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1155,7 +1487,7 @@ func (x *NodeStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeStatusRequest.ProtoReflect.Descriptor instead.
 func (*NodeStatusRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{21}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{28}
 }
 
 type NodeStatusInfo struct {
@@ -1170,7 +1502,7 @@ type NodeStatusInfo struct {
 
 func (x *NodeStatusInfo) Reset() {
 	*x = NodeStatusInfo{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[22]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1182,7 +1514,7 @@ func (x *NodeStatusInfo) String() string {
 func (*NodeStatusInfo) ProtoMessage() {}
 
 func (x *NodeStatusInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[22]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1195,7 +1527,7 @@ func (x *NodeStatusInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeStatusInfo.ProtoReflect.Descriptor instead.
 func (*NodeStatusInfo) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{22}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *NodeStatusInfo) GetNodeId() string {
@@ -1234,7 +1566,7 @@ type ListRuntimesRequest struct {
 
 func (x *ListRuntimesRequest) Reset() {
 	*x = ListRuntimesRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[23]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1246,7 +1578,7 @@ func (x *ListRuntimesRequest) String() string {
 func (*ListRuntimesRequest) ProtoMessage() {}
 
 func (x *ListRuntimesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[23]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1259,7 +1591,7 @@ func (x *ListRuntimesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRuntimesRequest.ProtoReflect.Descriptor instead.
 func (*ListRuntimesRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{23}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{30}
 }
 
 type RuntimeSummary struct {
@@ -1272,7 +1604,7 @@ type RuntimeSummary struct {
 
 func (x *RuntimeSummary) Reset() {
 	*x = RuntimeSummary{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[24]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1284,7 +1616,7 @@ func (x *RuntimeSummary) String() string {
 func (*RuntimeSummary) ProtoMessage() {}
 
 func (x *RuntimeSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[24]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1297,7 +1629,7 @@ func (x *RuntimeSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeSummary.ProtoReflect.Descriptor instead.
 func (*RuntimeSummary) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{24}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *RuntimeSummary) GetRuntimeType() RuntimeType {
@@ -1323,7 +1655,7 @@ type ListRuntimesResponse struct {
 
 func (x *ListRuntimesResponse) Reset() {
 	*x = ListRuntimesResponse{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[25]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1335,7 +1667,7 @@ func (x *ListRuntimesResponse) String() string {
 func (*ListRuntimesResponse) ProtoMessage() {}
 
 func (x *ListRuntimesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[25]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1348,7 +1680,7 @@ func (x *ListRuntimesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRuntimesResponse.ProtoReflect.Descriptor instead.
 func (*ListRuntimesResponse) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{25}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ListRuntimesResponse) GetRuntimes() []*RuntimeSummary {
@@ -1367,7 +1699,7 @@ type GetRuntimeCapabilitiesRequest struct {
 
 func (x *GetRuntimeCapabilitiesRequest) Reset() {
 	*x = GetRuntimeCapabilitiesRequest{}
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[26]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1379,7 +1711,7 @@ func (x *GetRuntimeCapabilitiesRequest) String() string {
 func (*GetRuntimeCapabilitiesRequest) ProtoMessage() {}
 
 func (x *GetRuntimeCapabilitiesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_novitabox_v1_boxlet_proto_msgTypes[26]
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1392,7 +1724,7 @@ func (x *GetRuntimeCapabilitiesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRuntimeCapabilitiesRequest.ProtoReflect.Descriptor instead.
 func (*GetRuntimeCapabilitiesRequest) Descriptor() ([]byte, []int) {
-	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{26}
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetRuntimeCapabilitiesRequest) GetRuntimeType() RuntimeType {
@@ -1454,7 +1786,33 @@ const file_novitabox_v1_boxlet_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"P\n" +
 	"\x15ListSandboxesResponse\x127\n" +
-	"\tsandboxes\x18\x01 \x03(\v2\x19.novitabox.v1.SandboxInfoR\tsandboxes\"\xaf\x03\n" +
+	"\tsandboxes\x18\x01 \x03(\v2\x19.novitabox.v1.SandboxInfoR\tsandboxes\"[\n" +
+	"\x1bUpdateSandboxBalloonRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12\x1d\n" +
+	"\n" +
+	"amount_mib\x18\x02 \x01(\rR\tamountMib\"9\n" +
+	"\x18GetSandboxBalloonRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\">\n" +
+	"\x1dGetSandboxBalloonStatsRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"z\n" +
+	" UpdateSandboxBalloonStatsRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x127\n" +
+	"\x18stats_polling_interval_s\x18\x02 \x01(\rR\x15statsPollingIntervalS\"\x84\x01\n" +
+	"!StartSandboxBalloonHintingRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12.\n" +
+	"\x13acknowledge_on_stop\x18\x03 \x01(\bR\x11acknowledgeOnStopJ\x04\b\x02\x10\x03R\n" +
+	"interval_s\"A\n" +
+	" StopSandboxBalloonHintingRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"@\n" +
+	"\x1fGetSandboxBalloonHintingRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"\xaf\x03\n" +
 	"\x15CreateTemplateRequest\x12\x1f\n" +
 	"\vtemplate_id\x18\x01 \x01(\tR\n" +
 	"templateId\x12\x1d\n" +
@@ -1524,7 +1882,7 @@ const file_novitabox_v1_boxlet_proto_rawDesc = "" +
 	"\x14ListRuntimesResponse\x128\n" +
 	"\bruntimes\x18\x01 \x03(\v2\x1c.novitabox.v1.RuntimeSummaryR\bruntimes\"]\n" +
 	"\x1dGetRuntimeCapabilitiesRequest\x12<\n" +
-	"\fruntime_type\x18\x01 \x01(\x0e2\x19.novitabox.v1.RuntimeTypeR\vruntimeType2\xdc\x05\n" +
+	"\fruntime_type\x18\x01 \x01(\x0e2\x19.novitabox.v1.RuntimeTypeR\vruntimeType2\xb6\v\n" +
 	"\x14BoxletSandboxService\x12N\n" +
 	"\rCreateSandbox\x12\".novitabox.v1.CreateSandboxRequest\x1a\x19.novitabox.v1.SandboxInfo\x12M\n" +
 	"\fPauseSandbox\x12!.novitabox.v1.PauseSandboxRequest\x1a\x1a.novitabox.v1.SnapshotInfo\x12N\n" +
@@ -1535,7 +1893,14 @@ const file_novitabox_v1_boxlet_proto_rawDesc = "" +
 	"\rRebootSandbox\x12\".novitabox.v1.RebootSandboxRequest\x1a\x19.novitabox.v1.SandboxInfo\x12H\n" +
 	"\n" +
 	"GetSandbox\x12\x1f.novitabox.v1.GetSandboxRequest\x1a\x19.novitabox.v1.SandboxInfo\x12X\n" +
-	"\rListSandboxes\x12\".novitabox.v1.ListSandboxesRequest\x1a#.novitabox.v1.ListSandboxesResponse2\x88\x05\n" +
+	"\rListSandboxes\x12\".novitabox.v1.ListSandboxesRequest\x1a#.novitabox.v1.ListSandboxesResponse\x12^\n" +
+	"\x14UpdateSandboxBalloon\x12).novitabox.v1.UpdateSandboxBalloonRequest\x1a\x1b.novitabox.v1.BalloonConfig\x12X\n" +
+	"\x11GetSandboxBalloon\x12&.novitabox.v1.GetSandboxBalloonRequest\x1a\x1b.novitabox.v1.BalloonConfig\x12a\n" +
+	"\x16GetSandboxBalloonStats\x12+.novitabox.v1.GetSandboxBalloonStatsRequest\x1a\x1a.novitabox.v1.BalloonStats\x12h\n" +
+	"\x19UpdateSandboxBalloonStats\x12..novitabox.v1.UpdateSandboxBalloonStatsRequest\x1a\x1b.novitabox.v1.BalloonConfig\x12q\n" +
+	"\x1aStartSandboxBalloonHinting\x12/.novitabox.v1.StartSandboxBalloonHintingRequest\x1a\".novitabox.v1.BalloonHintingStatus\x12o\n" +
+	"\x19StopSandboxBalloonHinting\x12..novitabox.v1.StopSandboxBalloonHintingRequest\x1a\".novitabox.v1.BalloonHintingStatus\x12m\n" +
+	"\x18GetSandboxBalloonHinting\x12-.novitabox.v1.GetSandboxBalloonHintingRequest\x1a\".novitabox.v1.BalloonHintingStatus2\x88\x05\n" +
 	"\x15BoxletArtifactService\x12Q\n" +
 	"\x0eCreateTemplate\x12#.novitabox.v1.CreateTemplateRequest\x1a\x1a.novitabox.v1.TemplateInfo\x12M\n" +
 	"\x0eDeleteTemplate\x12#.novitabox.v1.DeleteTemplateRequest\x1a\x16.google.protobuf.Empty\x12K\n" +
@@ -1564,72 +1929,82 @@ func file_novitabox_v1_boxlet_proto_rawDescGZIP() []byte {
 	return file_novitabox_v1_boxlet_proto_rawDescData
 }
 
-var file_novitabox_v1_boxlet_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_novitabox_v1_boxlet_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_novitabox_v1_boxlet_proto_goTypes = []any{
-	(*CreateSandboxRequest)(nil),          // 0: novitabox.v1.CreateSandboxRequest
-	(*PauseSandboxRequest)(nil),           // 1: novitabox.v1.PauseSandboxRequest
-	(*ResumeSandboxRequest)(nil),          // 2: novitabox.v1.ResumeSandboxRequest
-	(*KillSandboxRequest)(nil),            // 3: novitabox.v1.KillSandboxRequest
-	(*StartSandboxRequest)(nil),           // 4: novitabox.v1.StartSandboxRequest
-	(*StopSandboxRequest)(nil),            // 5: novitabox.v1.StopSandboxRequest
-	(*RebootSandboxRequest)(nil),          // 6: novitabox.v1.RebootSandboxRequest
-	(*GetSandboxRequest)(nil),             // 7: novitabox.v1.GetSandboxRequest
-	(*ListSandboxesRequest)(nil),          // 8: novitabox.v1.ListSandboxesRequest
-	(*ListSandboxesResponse)(nil),         // 9: novitabox.v1.ListSandboxesResponse
-	(*CreateTemplateRequest)(nil),         // 10: novitabox.v1.CreateTemplateRequest
-	(*TemplateBuildStep)(nil),             // 11: novitabox.v1.TemplateBuildStep
-	(*DeleteTemplateRequest)(nil),         // 12: novitabox.v1.DeleteTemplateRequest
-	(*GetTemplateRequest)(nil),            // 13: novitabox.v1.GetTemplateRequest
-	(*ListTemplatesRequest)(nil),          // 14: novitabox.v1.ListTemplatesRequest
-	(*ListTemplatesResponse)(nil),         // 15: novitabox.v1.ListTemplatesResponse
-	(*CreateImageRequest)(nil),            // 16: novitabox.v1.CreateImageRequest
-	(*DeleteImageRequest)(nil),            // 17: novitabox.v1.DeleteImageRequest
-	(*GetImageRequest)(nil),               // 18: novitabox.v1.GetImageRequest
-	(*ListImagesRequest)(nil),             // 19: novitabox.v1.ListImagesRequest
-	(*ListImagesResponse)(nil),            // 20: novitabox.v1.ListImagesResponse
-	(*NodeStatusRequest)(nil),             // 21: novitabox.v1.NodeStatusRequest
-	(*NodeStatusInfo)(nil),                // 22: novitabox.v1.NodeStatusInfo
-	(*ListRuntimesRequest)(nil),           // 23: novitabox.v1.ListRuntimesRequest
-	(*RuntimeSummary)(nil),                // 24: novitabox.v1.RuntimeSummary
-	(*ListRuntimesResponse)(nil),          // 25: novitabox.v1.ListRuntimesResponse
-	(*GetRuntimeCapabilitiesRequest)(nil), // 26: novitabox.v1.GetRuntimeCapabilitiesRequest
-	nil,                                   // 27: novitabox.v1.CreateSandboxRequest.LabelsEntry
-	nil,                                   // 28: novitabox.v1.CreateSandboxRequest.AnnotationsEntry
-	nil,                                   // 29: novitabox.v1.ListSandboxesRequest.LabelSelectorEntry
-	nil,                                   // 30: novitabox.v1.CreateTemplateRequest.LabelsEntry
-	nil,                                   // 31: novitabox.v1.TemplateBuildStep.EnvVarsEntry
-	nil,                                   // 32: novitabox.v1.ListTemplatesRequest.LabelSelectorEntry
-	nil,                                   // 33: novitabox.v1.CreateImageRequest.LabelsEntry
-	nil,                                   // 34: novitabox.v1.ListImagesRequest.LabelSelectorEntry
-	(RuntimeType)(0),                      // 35: novitabox.v1.RuntimeType
-	(*RuntimeSpec)(nil),                   // 36: novitabox.v1.RuntimeSpec
-	(*SandboxInfo)(nil),                   // 37: novitabox.v1.SandboxInfo
-	(*TemplateInfo)(nil),                  // 38: novitabox.v1.TemplateInfo
-	(*ImageInfo)(nil),                     // 39: novitabox.v1.ImageInfo
-	(*RuntimeCapabilities)(nil),           // 40: novitabox.v1.RuntimeCapabilities
-	(*SnapshotInfo)(nil),                  // 41: novitabox.v1.SnapshotInfo
-	(*emptypb.Empty)(nil),                 // 42: google.protobuf.Empty
+	(*CreateSandboxRequest)(nil),              // 0: novitabox.v1.CreateSandboxRequest
+	(*PauseSandboxRequest)(nil),               // 1: novitabox.v1.PauseSandboxRequest
+	(*ResumeSandboxRequest)(nil),              // 2: novitabox.v1.ResumeSandboxRequest
+	(*KillSandboxRequest)(nil),                // 3: novitabox.v1.KillSandboxRequest
+	(*StartSandboxRequest)(nil),               // 4: novitabox.v1.StartSandboxRequest
+	(*StopSandboxRequest)(nil),                // 5: novitabox.v1.StopSandboxRequest
+	(*RebootSandboxRequest)(nil),              // 6: novitabox.v1.RebootSandboxRequest
+	(*GetSandboxRequest)(nil),                 // 7: novitabox.v1.GetSandboxRequest
+	(*ListSandboxesRequest)(nil),              // 8: novitabox.v1.ListSandboxesRequest
+	(*ListSandboxesResponse)(nil),             // 9: novitabox.v1.ListSandboxesResponse
+	(*UpdateSandboxBalloonRequest)(nil),       // 10: novitabox.v1.UpdateSandboxBalloonRequest
+	(*GetSandboxBalloonRequest)(nil),          // 11: novitabox.v1.GetSandboxBalloonRequest
+	(*GetSandboxBalloonStatsRequest)(nil),     // 12: novitabox.v1.GetSandboxBalloonStatsRequest
+	(*UpdateSandboxBalloonStatsRequest)(nil),  // 13: novitabox.v1.UpdateSandboxBalloonStatsRequest
+	(*StartSandboxBalloonHintingRequest)(nil), // 14: novitabox.v1.StartSandboxBalloonHintingRequest
+	(*StopSandboxBalloonHintingRequest)(nil),  // 15: novitabox.v1.StopSandboxBalloonHintingRequest
+	(*GetSandboxBalloonHintingRequest)(nil),   // 16: novitabox.v1.GetSandboxBalloonHintingRequest
+	(*CreateTemplateRequest)(nil),             // 17: novitabox.v1.CreateTemplateRequest
+	(*TemplateBuildStep)(nil),                 // 18: novitabox.v1.TemplateBuildStep
+	(*DeleteTemplateRequest)(nil),             // 19: novitabox.v1.DeleteTemplateRequest
+	(*GetTemplateRequest)(nil),                // 20: novitabox.v1.GetTemplateRequest
+	(*ListTemplatesRequest)(nil),              // 21: novitabox.v1.ListTemplatesRequest
+	(*ListTemplatesResponse)(nil),             // 22: novitabox.v1.ListTemplatesResponse
+	(*CreateImageRequest)(nil),                // 23: novitabox.v1.CreateImageRequest
+	(*DeleteImageRequest)(nil),                // 24: novitabox.v1.DeleteImageRequest
+	(*GetImageRequest)(nil),                   // 25: novitabox.v1.GetImageRequest
+	(*ListImagesRequest)(nil),                 // 26: novitabox.v1.ListImagesRequest
+	(*ListImagesResponse)(nil),                // 27: novitabox.v1.ListImagesResponse
+	(*NodeStatusRequest)(nil),                 // 28: novitabox.v1.NodeStatusRequest
+	(*NodeStatusInfo)(nil),                    // 29: novitabox.v1.NodeStatusInfo
+	(*ListRuntimesRequest)(nil),               // 30: novitabox.v1.ListRuntimesRequest
+	(*RuntimeSummary)(nil),                    // 31: novitabox.v1.RuntimeSummary
+	(*ListRuntimesResponse)(nil),              // 32: novitabox.v1.ListRuntimesResponse
+	(*GetRuntimeCapabilitiesRequest)(nil),     // 33: novitabox.v1.GetRuntimeCapabilitiesRequest
+	nil,                                       // 34: novitabox.v1.CreateSandboxRequest.LabelsEntry
+	nil,                                       // 35: novitabox.v1.CreateSandboxRequest.AnnotationsEntry
+	nil,                                       // 36: novitabox.v1.ListSandboxesRequest.LabelSelectorEntry
+	nil,                                       // 37: novitabox.v1.CreateTemplateRequest.LabelsEntry
+	nil,                                       // 38: novitabox.v1.TemplateBuildStep.EnvVarsEntry
+	nil,                                       // 39: novitabox.v1.ListTemplatesRequest.LabelSelectorEntry
+	nil,                                       // 40: novitabox.v1.CreateImageRequest.LabelsEntry
+	nil,                                       // 41: novitabox.v1.ListImagesRequest.LabelSelectorEntry
+	(RuntimeType)(0),                          // 42: novitabox.v1.RuntimeType
+	(*RuntimeSpec)(nil),                       // 43: novitabox.v1.RuntimeSpec
+	(*SandboxInfo)(nil),                       // 44: novitabox.v1.SandboxInfo
+	(*TemplateInfo)(nil),                      // 45: novitabox.v1.TemplateInfo
+	(*ImageInfo)(nil),                         // 46: novitabox.v1.ImageInfo
+	(*RuntimeCapabilities)(nil),               // 47: novitabox.v1.RuntimeCapabilities
+	(*SnapshotInfo)(nil),                      // 48: novitabox.v1.SnapshotInfo
+	(*emptypb.Empty)(nil),                     // 49: google.protobuf.Empty
+	(*BalloonConfig)(nil),                     // 50: novitabox.v1.BalloonConfig
+	(*BalloonStats)(nil),                      // 51: novitabox.v1.BalloonStats
+	(*BalloonHintingStatus)(nil),              // 52: novitabox.v1.BalloonHintingStatus
 }
 var file_novitabox_v1_boxlet_proto_depIdxs = []int32{
-	35, // 0: novitabox.v1.CreateSandboxRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
-	36, // 1: novitabox.v1.CreateSandboxRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
-	27, // 2: novitabox.v1.CreateSandboxRequest.labels:type_name -> novitabox.v1.CreateSandboxRequest.LabelsEntry
-	28, // 3: novitabox.v1.CreateSandboxRequest.annotations:type_name -> novitabox.v1.CreateSandboxRequest.AnnotationsEntry
-	29, // 4: novitabox.v1.ListSandboxesRequest.label_selector:type_name -> novitabox.v1.ListSandboxesRequest.LabelSelectorEntry
-	37, // 5: novitabox.v1.ListSandboxesResponse.sandboxes:type_name -> novitabox.v1.SandboxInfo
-	11, // 6: novitabox.v1.CreateTemplateRequest.steps:type_name -> novitabox.v1.TemplateBuildStep
-	30, // 7: novitabox.v1.CreateTemplateRequest.labels:type_name -> novitabox.v1.CreateTemplateRequest.LabelsEntry
-	31, // 8: novitabox.v1.TemplateBuildStep.env_vars:type_name -> novitabox.v1.TemplateBuildStep.EnvVarsEntry
-	32, // 9: novitabox.v1.ListTemplatesRequest.label_selector:type_name -> novitabox.v1.ListTemplatesRequest.LabelSelectorEntry
-	38, // 10: novitabox.v1.ListTemplatesResponse.templates:type_name -> novitabox.v1.TemplateInfo
-	33, // 11: novitabox.v1.CreateImageRequest.labels:type_name -> novitabox.v1.CreateImageRequest.LabelsEntry
-	34, // 12: novitabox.v1.ListImagesRequest.label_selector:type_name -> novitabox.v1.ListImagesRequest.LabelSelectorEntry
-	39, // 13: novitabox.v1.ListImagesResponse.images:type_name -> novitabox.v1.ImageInfo
-	35, // 14: novitabox.v1.NodeStatusInfo.runtime_types:type_name -> novitabox.v1.RuntimeType
-	35, // 15: novitabox.v1.RuntimeSummary.runtime_type:type_name -> novitabox.v1.RuntimeType
-	40, // 16: novitabox.v1.RuntimeSummary.capabilities:type_name -> novitabox.v1.RuntimeCapabilities
-	24, // 17: novitabox.v1.ListRuntimesResponse.runtimes:type_name -> novitabox.v1.RuntimeSummary
-	35, // 18: novitabox.v1.GetRuntimeCapabilitiesRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
+	42, // 0: novitabox.v1.CreateSandboxRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
+	43, // 1: novitabox.v1.CreateSandboxRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
+	34, // 2: novitabox.v1.CreateSandboxRequest.labels:type_name -> novitabox.v1.CreateSandboxRequest.LabelsEntry
+	35, // 3: novitabox.v1.CreateSandboxRequest.annotations:type_name -> novitabox.v1.CreateSandboxRequest.AnnotationsEntry
+	36, // 4: novitabox.v1.ListSandboxesRequest.label_selector:type_name -> novitabox.v1.ListSandboxesRequest.LabelSelectorEntry
+	44, // 5: novitabox.v1.ListSandboxesResponse.sandboxes:type_name -> novitabox.v1.SandboxInfo
+	18, // 6: novitabox.v1.CreateTemplateRequest.steps:type_name -> novitabox.v1.TemplateBuildStep
+	37, // 7: novitabox.v1.CreateTemplateRequest.labels:type_name -> novitabox.v1.CreateTemplateRequest.LabelsEntry
+	38, // 8: novitabox.v1.TemplateBuildStep.env_vars:type_name -> novitabox.v1.TemplateBuildStep.EnvVarsEntry
+	39, // 9: novitabox.v1.ListTemplatesRequest.label_selector:type_name -> novitabox.v1.ListTemplatesRequest.LabelSelectorEntry
+	45, // 10: novitabox.v1.ListTemplatesResponse.templates:type_name -> novitabox.v1.TemplateInfo
+	40, // 11: novitabox.v1.CreateImageRequest.labels:type_name -> novitabox.v1.CreateImageRequest.LabelsEntry
+	41, // 12: novitabox.v1.ListImagesRequest.label_selector:type_name -> novitabox.v1.ListImagesRequest.LabelSelectorEntry
+	46, // 13: novitabox.v1.ListImagesResponse.images:type_name -> novitabox.v1.ImageInfo
+	42, // 14: novitabox.v1.NodeStatusInfo.runtime_types:type_name -> novitabox.v1.RuntimeType
+	42, // 15: novitabox.v1.RuntimeSummary.runtime_type:type_name -> novitabox.v1.RuntimeType
+	47, // 16: novitabox.v1.RuntimeSummary.capabilities:type_name -> novitabox.v1.RuntimeCapabilities
+	31, // 17: novitabox.v1.ListRuntimesResponse.runtimes:type_name -> novitabox.v1.RuntimeSummary
+	42, // 18: novitabox.v1.GetRuntimeCapabilitiesRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
 	0,  // 19: novitabox.v1.BoxletSandboxService.CreateSandbox:input_type -> novitabox.v1.CreateSandboxRequest
 	1,  // 20: novitabox.v1.BoxletSandboxService.PauseSandbox:input_type -> novitabox.v1.PauseSandboxRequest
 	2,  // 21: novitabox.v1.BoxletSandboxService.ResumeSandbox:input_type -> novitabox.v1.ResumeSandboxRequest
@@ -1639,39 +2014,53 @@ var file_novitabox_v1_boxlet_proto_depIdxs = []int32{
 	6,  // 25: novitabox.v1.BoxletSandboxService.RebootSandbox:input_type -> novitabox.v1.RebootSandboxRequest
 	7,  // 26: novitabox.v1.BoxletSandboxService.GetSandbox:input_type -> novitabox.v1.GetSandboxRequest
 	8,  // 27: novitabox.v1.BoxletSandboxService.ListSandboxes:input_type -> novitabox.v1.ListSandboxesRequest
-	10, // 28: novitabox.v1.BoxletArtifactService.CreateTemplate:input_type -> novitabox.v1.CreateTemplateRequest
-	12, // 29: novitabox.v1.BoxletArtifactService.DeleteTemplate:input_type -> novitabox.v1.DeleteTemplateRequest
-	13, // 30: novitabox.v1.BoxletArtifactService.GetTemplate:input_type -> novitabox.v1.GetTemplateRequest
-	14, // 31: novitabox.v1.BoxletArtifactService.ListTemplates:input_type -> novitabox.v1.ListTemplatesRequest
-	16, // 32: novitabox.v1.BoxletArtifactService.CreateImage:input_type -> novitabox.v1.CreateImageRequest
-	17, // 33: novitabox.v1.BoxletArtifactService.DeleteImage:input_type -> novitabox.v1.DeleteImageRequest
-	18, // 34: novitabox.v1.BoxletArtifactService.GetImage:input_type -> novitabox.v1.GetImageRequest
-	19, // 35: novitabox.v1.BoxletArtifactService.ListImages:input_type -> novitabox.v1.ListImagesRequest
-	21, // 36: novitabox.v1.BoxletNodeService.NodeStatus:input_type -> novitabox.v1.NodeStatusRequest
-	23, // 37: novitabox.v1.BoxletNodeService.ListRuntimes:input_type -> novitabox.v1.ListRuntimesRequest
-	26, // 38: novitabox.v1.BoxletNodeService.GetRuntimeCapabilities:input_type -> novitabox.v1.GetRuntimeCapabilitiesRequest
-	37, // 39: novitabox.v1.BoxletSandboxService.CreateSandbox:output_type -> novitabox.v1.SandboxInfo
-	41, // 40: novitabox.v1.BoxletSandboxService.PauseSandbox:output_type -> novitabox.v1.SnapshotInfo
-	37, // 41: novitabox.v1.BoxletSandboxService.ResumeSandbox:output_type -> novitabox.v1.SandboxInfo
-	42, // 42: novitabox.v1.BoxletSandboxService.KillSandbox:output_type -> google.protobuf.Empty
-	37, // 43: novitabox.v1.BoxletSandboxService.StartSandbox:output_type -> novitabox.v1.SandboxInfo
-	37, // 44: novitabox.v1.BoxletSandboxService.StopSandbox:output_type -> novitabox.v1.SandboxInfo
-	37, // 45: novitabox.v1.BoxletSandboxService.RebootSandbox:output_type -> novitabox.v1.SandboxInfo
-	37, // 46: novitabox.v1.BoxletSandboxService.GetSandbox:output_type -> novitabox.v1.SandboxInfo
-	9,  // 47: novitabox.v1.BoxletSandboxService.ListSandboxes:output_type -> novitabox.v1.ListSandboxesResponse
-	38, // 48: novitabox.v1.BoxletArtifactService.CreateTemplate:output_type -> novitabox.v1.TemplateInfo
-	42, // 49: novitabox.v1.BoxletArtifactService.DeleteTemplate:output_type -> google.protobuf.Empty
-	38, // 50: novitabox.v1.BoxletArtifactService.GetTemplate:output_type -> novitabox.v1.TemplateInfo
-	15, // 51: novitabox.v1.BoxletArtifactService.ListTemplates:output_type -> novitabox.v1.ListTemplatesResponse
-	39, // 52: novitabox.v1.BoxletArtifactService.CreateImage:output_type -> novitabox.v1.ImageInfo
-	42, // 53: novitabox.v1.BoxletArtifactService.DeleteImage:output_type -> google.protobuf.Empty
-	39, // 54: novitabox.v1.BoxletArtifactService.GetImage:output_type -> novitabox.v1.ImageInfo
-	20, // 55: novitabox.v1.BoxletArtifactService.ListImages:output_type -> novitabox.v1.ListImagesResponse
-	22, // 56: novitabox.v1.BoxletNodeService.NodeStatus:output_type -> novitabox.v1.NodeStatusInfo
-	25, // 57: novitabox.v1.BoxletNodeService.ListRuntimes:output_type -> novitabox.v1.ListRuntimesResponse
-	40, // 58: novitabox.v1.BoxletNodeService.GetRuntimeCapabilities:output_type -> novitabox.v1.RuntimeCapabilities
-	39, // [39:59] is the sub-list for method output_type
-	19, // [19:39] is the sub-list for method input_type
+	10, // 28: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloon:input_type -> novitabox.v1.UpdateSandboxBalloonRequest
+	11, // 29: novitabox.v1.BoxletSandboxService.GetSandboxBalloon:input_type -> novitabox.v1.GetSandboxBalloonRequest
+	12, // 30: novitabox.v1.BoxletSandboxService.GetSandboxBalloonStats:input_type -> novitabox.v1.GetSandboxBalloonStatsRequest
+	13, // 31: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloonStats:input_type -> novitabox.v1.UpdateSandboxBalloonStatsRequest
+	14, // 32: novitabox.v1.BoxletSandboxService.StartSandboxBalloonHinting:input_type -> novitabox.v1.StartSandboxBalloonHintingRequest
+	15, // 33: novitabox.v1.BoxletSandboxService.StopSandboxBalloonHinting:input_type -> novitabox.v1.StopSandboxBalloonHintingRequest
+	16, // 34: novitabox.v1.BoxletSandboxService.GetSandboxBalloonHinting:input_type -> novitabox.v1.GetSandboxBalloonHintingRequest
+	17, // 35: novitabox.v1.BoxletArtifactService.CreateTemplate:input_type -> novitabox.v1.CreateTemplateRequest
+	19, // 36: novitabox.v1.BoxletArtifactService.DeleteTemplate:input_type -> novitabox.v1.DeleteTemplateRequest
+	20, // 37: novitabox.v1.BoxletArtifactService.GetTemplate:input_type -> novitabox.v1.GetTemplateRequest
+	21, // 38: novitabox.v1.BoxletArtifactService.ListTemplates:input_type -> novitabox.v1.ListTemplatesRequest
+	23, // 39: novitabox.v1.BoxletArtifactService.CreateImage:input_type -> novitabox.v1.CreateImageRequest
+	24, // 40: novitabox.v1.BoxletArtifactService.DeleteImage:input_type -> novitabox.v1.DeleteImageRequest
+	25, // 41: novitabox.v1.BoxletArtifactService.GetImage:input_type -> novitabox.v1.GetImageRequest
+	26, // 42: novitabox.v1.BoxletArtifactService.ListImages:input_type -> novitabox.v1.ListImagesRequest
+	28, // 43: novitabox.v1.BoxletNodeService.NodeStatus:input_type -> novitabox.v1.NodeStatusRequest
+	30, // 44: novitabox.v1.BoxletNodeService.ListRuntimes:input_type -> novitabox.v1.ListRuntimesRequest
+	33, // 45: novitabox.v1.BoxletNodeService.GetRuntimeCapabilities:input_type -> novitabox.v1.GetRuntimeCapabilitiesRequest
+	44, // 46: novitabox.v1.BoxletSandboxService.CreateSandbox:output_type -> novitabox.v1.SandboxInfo
+	48, // 47: novitabox.v1.BoxletSandboxService.PauseSandbox:output_type -> novitabox.v1.SnapshotInfo
+	44, // 48: novitabox.v1.BoxletSandboxService.ResumeSandbox:output_type -> novitabox.v1.SandboxInfo
+	49, // 49: novitabox.v1.BoxletSandboxService.KillSandbox:output_type -> google.protobuf.Empty
+	44, // 50: novitabox.v1.BoxletSandboxService.StartSandbox:output_type -> novitabox.v1.SandboxInfo
+	44, // 51: novitabox.v1.BoxletSandboxService.StopSandbox:output_type -> novitabox.v1.SandboxInfo
+	44, // 52: novitabox.v1.BoxletSandboxService.RebootSandbox:output_type -> novitabox.v1.SandboxInfo
+	44, // 53: novitabox.v1.BoxletSandboxService.GetSandbox:output_type -> novitabox.v1.SandboxInfo
+	9,  // 54: novitabox.v1.BoxletSandboxService.ListSandboxes:output_type -> novitabox.v1.ListSandboxesResponse
+	50, // 55: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloon:output_type -> novitabox.v1.BalloonConfig
+	50, // 56: novitabox.v1.BoxletSandboxService.GetSandboxBalloon:output_type -> novitabox.v1.BalloonConfig
+	51, // 57: novitabox.v1.BoxletSandboxService.GetSandboxBalloonStats:output_type -> novitabox.v1.BalloonStats
+	50, // 58: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloonStats:output_type -> novitabox.v1.BalloonConfig
+	52, // 59: novitabox.v1.BoxletSandboxService.StartSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	52, // 60: novitabox.v1.BoxletSandboxService.StopSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	52, // 61: novitabox.v1.BoxletSandboxService.GetSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	45, // 62: novitabox.v1.BoxletArtifactService.CreateTemplate:output_type -> novitabox.v1.TemplateInfo
+	49, // 63: novitabox.v1.BoxletArtifactService.DeleteTemplate:output_type -> google.protobuf.Empty
+	45, // 64: novitabox.v1.BoxletArtifactService.GetTemplate:output_type -> novitabox.v1.TemplateInfo
+	22, // 65: novitabox.v1.BoxletArtifactService.ListTemplates:output_type -> novitabox.v1.ListTemplatesResponse
+	46, // 66: novitabox.v1.BoxletArtifactService.CreateImage:output_type -> novitabox.v1.ImageInfo
+	49, // 67: novitabox.v1.BoxletArtifactService.DeleteImage:output_type -> google.protobuf.Empty
+	46, // 68: novitabox.v1.BoxletArtifactService.GetImage:output_type -> novitabox.v1.ImageInfo
+	27, // 69: novitabox.v1.BoxletArtifactService.ListImages:output_type -> novitabox.v1.ListImagesResponse
+	29, // 70: novitabox.v1.BoxletNodeService.NodeStatus:output_type -> novitabox.v1.NodeStatusInfo
+	32, // 71: novitabox.v1.BoxletNodeService.ListRuntimes:output_type -> novitabox.v1.ListRuntimesResponse
+	47, // 72: novitabox.v1.BoxletNodeService.GetRuntimeCapabilities:output_type -> novitabox.v1.RuntimeCapabilities
+	46, // [46:73] is the sub-list for method output_type
+	19, // [19:46] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
 	19, // [19:19] is the sub-list for extension extendee
 	0,  // [0:19] is the sub-list for field type_name
@@ -1689,7 +2078,7 @@ func file_novitabox_v1_boxlet_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_novitabox_v1_boxlet_proto_rawDesc), len(file_novitabox_v1_boxlet_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   35,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

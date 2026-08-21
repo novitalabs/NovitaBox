@@ -80,6 +80,13 @@ func registerV1SandboxRoutes(v1 *gin.RouterGroup, h *handler.Handler) {
 		sandboxes.POST("/:sandbox_id/poweroff", h.PoweroffSandbox)
 		sandboxes.POST("/:sandbox_id/poweron", h.PoweronSandbox)
 		sandboxes.POST("/:sandbox_id/reboot", h.RebootSandbox)
+		sandboxes.GET("/:sandbox_id/balloon", h.GetSandboxBalloon)
+		sandboxes.PATCH("/:sandbox_id/balloon", h.UpdateSandboxBalloon)
+		sandboxes.GET("/:sandbox_id/balloon/statistics", h.GetSandboxBalloonStats)
+		sandboxes.PATCH("/:sandbox_id/balloon/statistics", h.UpdateSandboxBalloonStats)
+		sandboxes.GET("/:sandbox_id/balloon/hinting", h.GetSandboxBalloonHinting)
+		sandboxes.POST("/:sandbox_id/balloon/hinting/start", h.StartSandboxBalloonHinting)
+		sandboxes.POST("/:sandbox_id/balloon/hinting/stop", h.StopSandboxBalloonHinting)
 	}
 }
 

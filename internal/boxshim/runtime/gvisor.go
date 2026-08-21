@@ -129,6 +129,34 @@ func (d *GVisorDriver) Capabilities(context.Context, novitaboxv1.RuntimeType) (*
 	return gvisorCapabilities(), nil
 }
 
+func (d *GVisorDriver) UpdateBalloon(context.Context, string, uint32) (*novitaboxv1.BalloonConfig, error) {
+	return nil, errors.New("balloon is not supported by this runtime")
+}
+
+func (d *GVisorDriver) GetBalloon(context.Context, string) (*novitaboxv1.BalloonConfig, error) {
+	return nil, errors.New("balloon is not supported by this runtime")
+}
+
+func (d *GVisorDriver) GetBalloonStats(context.Context, string) (*novitaboxv1.BalloonStats, error) {
+	return nil, errors.New("balloon is not supported by this runtime")
+}
+
+func (d *GVisorDriver) UpdateBalloonStats(context.Context, string, uint32) (*novitaboxv1.BalloonConfig, error) {
+	return nil, errors.New("balloon is not supported by this runtime")
+}
+
+func (d *GVisorDriver) StartBalloonHinting(context.Context, string, bool) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, errors.New("balloon hinting is not supported by this runtime")
+}
+
+func (d *GVisorDriver) StopBalloonHinting(context.Context, string) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, errors.New("balloon hinting is not supported by this runtime")
+}
+
+func (d *GVisorDriver) GetBalloonHinting(context.Context, string) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, errors.New("balloon hinting is not supported by this runtime")
+}
+
 func (d *GVisorDriver) start(ctx context.Context, spec *novitaboxv1.RuntimeSpec, action string) (*novitaboxv1.RuntimeInfo, error) {
 	spec, err := normalizeSpec(spec)
 	if err != nil {

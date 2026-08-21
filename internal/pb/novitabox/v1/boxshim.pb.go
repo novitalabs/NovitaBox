@@ -434,6 +434,338 @@ func (x *CapabilitiesRequest) GetRuntimeType() RuntimeType {
 	return RuntimeType_RUNTIME_TYPE_UNSPECIFIED
 }
 
+type UpdateBalloonRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	AmountMib     uint32                 `protobuf:"varint,2,opt,name=amount_mib,json=amountMib,proto3" json:"amount_mib,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateBalloonRequest) Reset() {
+	*x = UpdateBalloonRequest{}
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateBalloonRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateBalloonRequest) ProtoMessage() {}
+
+func (x *UpdateBalloonRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateBalloonRequest.ProtoReflect.Descriptor instead.
+func (*UpdateBalloonRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxshim_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *UpdateBalloonRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+func (x *UpdateBalloonRequest) GetAmountMib() uint32 {
+	if x != nil {
+		return x.AmountMib
+	}
+	return 0
+}
+
+type GetBalloonRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBalloonRequest) Reset() {
+	*x = GetBalloonRequest{}
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBalloonRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBalloonRequest) ProtoMessage() {}
+
+func (x *GetBalloonRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBalloonRequest.ProtoReflect.Descriptor instead.
+func (*GetBalloonRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxshim_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetBalloonRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+type GetBalloonStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBalloonStatsRequest) Reset() {
+	*x = GetBalloonStatsRequest{}
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBalloonStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBalloonStatsRequest) ProtoMessage() {}
+
+func (x *GetBalloonStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBalloonStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetBalloonStatsRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxshim_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetBalloonStatsRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+type UpdateBalloonStatsRequest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId             string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	StatsPollingIntervalS uint32                 `protobuf:"varint,2,opt,name=stats_polling_interval_s,json=statsPollingIntervalS,proto3" json:"stats_polling_interval_s,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *UpdateBalloonStatsRequest) Reset() {
+	*x = UpdateBalloonStatsRequest{}
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateBalloonStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateBalloonStatsRequest) ProtoMessage() {}
+
+func (x *UpdateBalloonStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateBalloonStatsRequest.ProtoReflect.Descriptor instead.
+func (*UpdateBalloonStatsRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxshim_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *UpdateBalloonStatsRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+func (x *UpdateBalloonStatsRequest) GetStatsPollingIntervalS() uint32 {
+	if x != nil {
+		return x.StatsPollingIntervalS
+	}
+	return 0
+}
+
+type StartBalloonHintingRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId         string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	AcknowledgeOnStop bool                   `protobuf:"varint,3,opt,name=acknowledge_on_stop,json=acknowledgeOnStop,proto3" json:"acknowledge_on_stop,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *StartBalloonHintingRequest) Reset() {
+	*x = StartBalloonHintingRequest{}
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartBalloonHintingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartBalloonHintingRequest) ProtoMessage() {}
+
+func (x *StartBalloonHintingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartBalloonHintingRequest.ProtoReflect.Descriptor instead.
+func (*StartBalloonHintingRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxshim_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *StartBalloonHintingRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+func (x *StartBalloonHintingRequest) GetAcknowledgeOnStop() bool {
+	if x != nil {
+		return x.AcknowledgeOnStop
+	}
+	return false
+}
+
+type StopBalloonHintingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopBalloonHintingRequest) Reset() {
+	*x = StopBalloonHintingRequest{}
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopBalloonHintingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopBalloonHintingRequest) ProtoMessage() {}
+
+func (x *StopBalloonHintingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopBalloonHintingRequest.ProtoReflect.Descriptor instead.
+func (*StopBalloonHintingRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxshim_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *StopBalloonHintingRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
+type GetBalloonHintingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SandboxId     string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBalloonHintingRequest) Reset() {
+	*x = GetBalloonHintingRequest{}
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBalloonHintingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBalloonHintingRequest) ProtoMessage() {}
+
+func (x *GetBalloonHintingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxshim_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBalloonHintingRequest.ProtoReflect.Descriptor instead.
+func (*GetBalloonHintingRequest) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxshim_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetBalloonHintingRequest) GetSandboxId() string {
+	if x != nil {
+		return x.SandboxId
+	}
+	return ""
+}
+
 var File_novitabox_v1_boxshim_proto protoreflect.FileDescriptor
 
 const file_novitabox_v1_boxshim_proto_rawDesc = "" +
@@ -463,7 +795,34 @@ const file_novitabox_v1_boxshim_proto_rawDesc = "" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"S\n" +
 	"\x13CapabilitiesRequest\x12<\n" +
-	"\fruntime_type\x18\x01 \x01(\x0e2\x19.novitabox.v1.RuntimeTypeR\vruntimeType2\xc2\x05\n" +
+	"\fruntime_type\x18\x01 \x01(\x0e2\x19.novitabox.v1.RuntimeTypeR\vruntimeType\"T\n" +
+	"\x14UpdateBalloonRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12\x1d\n" +
+	"\n" +
+	"amount_mib\x18\x02 \x01(\rR\tamountMib\"2\n" +
+	"\x11GetBalloonRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"7\n" +
+	"\x16GetBalloonStatsRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"s\n" +
+	"\x19UpdateBalloonStatsRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x127\n" +
+	"\x18stats_polling_interval_s\x18\x02 \x01(\rR\x15statsPollingIntervalS\"}\n" +
+	"\x1aStartBalloonHintingRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12.\n" +
+	"\x13acknowledge_on_stop\x18\x03 \x01(\bR\x11acknowledgeOnStopJ\x04\b\x02\x10\x03R\n" +
+	"interval_s\":\n" +
+	"\x19StopBalloonHintingRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"9\n" +
+	"\x18GetBalloonHintingRequest\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId2\xba\n" +
+	"\n" +
 	"\aBoxShim\x12N\n" +
 	"\rCreateRuntime\x12\".novitabox.v1.CreateRuntimeRequest\x1a\x19.novitabox.v1.RuntimeInfo\x12L\n" +
 	"\fPauseRuntime\x12!.novitabox.v1.PauseRuntimeRequest\x1a\x19.novitabox.v1.RuntimeInfo\x12N\n" +
@@ -473,7 +832,15 @@ const file_novitabox_v1_boxshim_proto_rawDesc = "" +
 	"\vStopRuntime\x12 .novitabox.v1.StopRuntimeRequest\x1a\x19.novitabox.v1.RuntimeInfo\x12N\n" +
 	"\rRebootRuntime\x12\".novitabox.v1.RebootRuntimeRequest\x1a\x19.novitabox.v1.RuntimeInfo\x12@\n" +
 	"\x06Status\x12\x1b.novitabox.v1.StatusRequest\x1a\x19.novitabox.v1.RuntimeInfo\x12T\n" +
-	"\fCapabilities\x12!.novitabox.v1.CapabilitiesRequest\x1a!.novitabox.v1.RuntimeCapabilitiesBFZDgithub.com/novitalabs/NovitaBox/internal/pb/novitabox/v1;novitaboxv1b\x06proto3"
+	"\fCapabilities\x12!.novitabox.v1.CapabilitiesRequest\x1a!.novitabox.v1.RuntimeCapabilities\x12P\n" +
+	"\rUpdateBalloon\x12\".novitabox.v1.UpdateBalloonRequest\x1a\x1b.novitabox.v1.BalloonConfig\x12J\n" +
+	"\n" +
+	"GetBalloon\x12\x1f.novitabox.v1.GetBalloonRequest\x1a\x1b.novitabox.v1.BalloonConfig\x12S\n" +
+	"\x0fGetBalloonStats\x12$.novitabox.v1.GetBalloonStatsRequest\x1a\x1a.novitabox.v1.BalloonStats\x12Z\n" +
+	"\x12UpdateBalloonStats\x12'.novitabox.v1.UpdateBalloonStatsRequest\x1a\x1b.novitabox.v1.BalloonConfig\x12c\n" +
+	"\x13StartBalloonHinting\x12(.novitabox.v1.StartBalloonHintingRequest\x1a\".novitabox.v1.BalloonHintingStatus\x12a\n" +
+	"\x12StopBalloonHinting\x12'.novitabox.v1.StopBalloonHintingRequest\x1a\".novitabox.v1.BalloonHintingStatus\x12_\n" +
+	"\x11GetBalloonHinting\x12&.novitabox.v1.GetBalloonHintingRequest\x1a\".novitabox.v1.BalloonHintingStatusBFZDgithub.com/novitalabs/NovitaBox/internal/pb/novitabox/v1;novitaboxv1b\x06proto3"
 
 var (
 	file_novitabox_v1_boxshim_proto_rawDescOnce sync.Once
@@ -487,28 +854,38 @@ func file_novitabox_v1_boxshim_proto_rawDescGZIP() []byte {
 	return file_novitabox_v1_boxshim_proto_rawDescData
 }
 
-var file_novitabox_v1_boxshim_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_novitabox_v1_boxshim_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_novitabox_v1_boxshim_proto_goTypes = []any{
-	(*CreateRuntimeRequest)(nil), // 0: novitabox.v1.CreateRuntimeRequest
-	(*PauseRuntimeRequest)(nil),  // 1: novitabox.v1.PauseRuntimeRequest
-	(*ResumeRuntimeRequest)(nil), // 2: novitabox.v1.ResumeRuntimeRequest
-	(*KillRuntimeRequest)(nil),   // 3: novitabox.v1.KillRuntimeRequest
-	(*StartRuntimeRequest)(nil),  // 4: novitabox.v1.StartRuntimeRequest
-	(*StopRuntimeRequest)(nil),   // 5: novitabox.v1.StopRuntimeRequest
-	(*RebootRuntimeRequest)(nil), // 6: novitabox.v1.RebootRuntimeRequest
-	(*StatusRequest)(nil),        // 7: novitabox.v1.StatusRequest
-	(*CapabilitiesRequest)(nil),  // 8: novitabox.v1.CapabilitiesRequest
-	(*RuntimeSpec)(nil),          // 9: novitabox.v1.RuntimeSpec
-	(RuntimeType)(0),             // 10: novitabox.v1.RuntimeType
-	(*RuntimeInfo)(nil),          // 11: novitabox.v1.RuntimeInfo
-	(*emptypb.Empty)(nil),        // 12: google.protobuf.Empty
-	(*RuntimeCapabilities)(nil),  // 13: novitabox.v1.RuntimeCapabilities
+	(*CreateRuntimeRequest)(nil),       // 0: novitabox.v1.CreateRuntimeRequest
+	(*PauseRuntimeRequest)(nil),        // 1: novitabox.v1.PauseRuntimeRequest
+	(*ResumeRuntimeRequest)(nil),       // 2: novitabox.v1.ResumeRuntimeRequest
+	(*KillRuntimeRequest)(nil),         // 3: novitabox.v1.KillRuntimeRequest
+	(*StartRuntimeRequest)(nil),        // 4: novitabox.v1.StartRuntimeRequest
+	(*StopRuntimeRequest)(nil),         // 5: novitabox.v1.StopRuntimeRequest
+	(*RebootRuntimeRequest)(nil),       // 6: novitabox.v1.RebootRuntimeRequest
+	(*StatusRequest)(nil),              // 7: novitabox.v1.StatusRequest
+	(*CapabilitiesRequest)(nil),        // 8: novitabox.v1.CapabilitiesRequest
+	(*UpdateBalloonRequest)(nil),       // 9: novitabox.v1.UpdateBalloonRequest
+	(*GetBalloonRequest)(nil),          // 10: novitabox.v1.GetBalloonRequest
+	(*GetBalloonStatsRequest)(nil),     // 11: novitabox.v1.GetBalloonStatsRequest
+	(*UpdateBalloonStatsRequest)(nil),  // 12: novitabox.v1.UpdateBalloonStatsRequest
+	(*StartBalloonHintingRequest)(nil), // 13: novitabox.v1.StartBalloonHintingRequest
+	(*StopBalloonHintingRequest)(nil),  // 14: novitabox.v1.StopBalloonHintingRequest
+	(*GetBalloonHintingRequest)(nil),   // 15: novitabox.v1.GetBalloonHintingRequest
+	(*RuntimeSpec)(nil),                // 16: novitabox.v1.RuntimeSpec
+	(RuntimeType)(0),                   // 17: novitabox.v1.RuntimeType
+	(*RuntimeInfo)(nil),                // 18: novitabox.v1.RuntimeInfo
+	(*emptypb.Empty)(nil),              // 19: google.protobuf.Empty
+	(*RuntimeCapabilities)(nil),        // 20: novitabox.v1.RuntimeCapabilities
+	(*BalloonConfig)(nil),              // 21: novitabox.v1.BalloonConfig
+	(*BalloonStats)(nil),               // 22: novitabox.v1.BalloonStats
+	(*BalloonHintingStatus)(nil),       // 23: novitabox.v1.BalloonHintingStatus
 }
 var file_novitabox_v1_boxshim_proto_depIdxs = []int32{
-	9,  // 0: novitabox.v1.CreateRuntimeRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
-	9,  // 1: novitabox.v1.ResumeRuntimeRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
-	9,  // 2: novitabox.v1.StartRuntimeRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
-	10, // 3: novitabox.v1.CapabilitiesRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
+	16, // 0: novitabox.v1.CreateRuntimeRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
+	16, // 1: novitabox.v1.ResumeRuntimeRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
+	16, // 2: novitabox.v1.StartRuntimeRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
+	17, // 3: novitabox.v1.CapabilitiesRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
 	0,  // 4: novitabox.v1.BoxShim.CreateRuntime:input_type -> novitabox.v1.CreateRuntimeRequest
 	1,  // 5: novitabox.v1.BoxShim.PauseRuntime:input_type -> novitabox.v1.PauseRuntimeRequest
 	2,  // 6: novitabox.v1.BoxShim.ResumeRuntime:input_type -> novitabox.v1.ResumeRuntimeRequest
@@ -518,17 +895,31 @@ var file_novitabox_v1_boxshim_proto_depIdxs = []int32{
 	6,  // 10: novitabox.v1.BoxShim.RebootRuntime:input_type -> novitabox.v1.RebootRuntimeRequest
 	7,  // 11: novitabox.v1.BoxShim.Status:input_type -> novitabox.v1.StatusRequest
 	8,  // 12: novitabox.v1.BoxShim.Capabilities:input_type -> novitabox.v1.CapabilitiesRequest
-	11, // 13: novitabox.v1.BoxShim.CreateRuntime:output_type -> novitabox.v1.RuntimeInfo
-	11, // 14: novitabox.v1.BoxShim.PauseRuntime:output_type -> novitabox.v1.RuntimeInfo
-	11, // 15: novitabox.v1.BoxShim.ResumeRuntime:output_type -> novitabox.v1.RuntimeInfo
-	12, // 16: novitabox.v1.BoxShim.KillRuntime:output_type -> google.protobuf.Empty
-	11, // 17: novitabox.v1.BoxShim.StartRuntime:output_type -> novitabox.v1.RuntimeInfo
-	11, // 18: novitabox.v1.BoxShim.StopRuntime:output_type -> novitabox.v1.RuntimeInfo
-	11, // 19: novitabox.v1.BoxShim.RebootRuntime:output_type -> novitabox.v1.RuntimeInfo
-	11, // 20: novitabox.v1.BoxShim.Status:output_type -> novitabox.v1.RuntimeInfo
-	13, // 21: novitabox.v1.BoxShim.Capabilities:output_type -> novitabox.v1.RuntimeCapabilities
-	13, // [13:22] is the sub-list for method output_type
-	4,  // [4:13] is the sub-list for method input_type
+	9,  // 13: novitabox.v1.BoxShim.UpdateBalloon:input_type -> novitabox.v1.UpdateBalloonRequest
+	10, // 14: novitabox.v1.BoxShim.GetBalloon:input_type -> novitabox.v1.GetBalloonRequest
+	11, // 15: novitabox.v1.BoxShim.GetBalloonStats:input_type -> novitabox.v1.GetBalloonStatsRequest
+	12, // 16: novitabox.v1.BoxShim.UpdateBalloonStats:input_type -> novitabox.v1.UpdateBalloonStatsRequest
+	13, // 17: novitabox.v1.BoxShim.StartBalloonHinting:input_type -> novitabox.v1.StartBalloonHintingRequest
+	14, // 18: novitabox.v1.BoxShim.StopBalloonHinting:input_type -> novitabox.v1.StopBalloonHintingRequest
+	15, // 19: novitabox.v1.BoxShim.GetBalloonHinting:input_type -> novitabox.v1.GetBalloonHintingRequest
+	18, // 20: novitabox.v1.BoxShim.CreateRuntime:output_type -> novitabox.v1.RuntimeInfo
+	18, // 21: novitabox.v1.BoxShim.PauseRuntime:output_type -> novitabox.v1.RuntimeInfo
+	18, // 22: novitabox.v1.BoxShim.ResumeRuntime:output_type -> novitabox.v1.RuntimeInfo
+	19, // 23: novitabox.v1.BoxShim.KillRuntime:output_type -> google.protobuf.Empty
+	18, // 24: novitabox.v1.BoxShim.StartRuntime:output_type -> novitabox.v1.RuntimeInfo
+	18, // 25: novitabox.v1.BoxShim.StopRuntime:output_type -> novitabox.v1.RuntimeInfo
+	18, // 26: novitabox.v1.BoxShim.RebootRuntime:output_type -> novitabox.v1.RuntimeInfo
+	18, // 27: novitabox.v1.BoxShim.Status:output_type -> novitabox.v1.RuntimeInfo
+	20, // 28: novitabox.v1.BoxShim.Capabilities:output_type -> novitabox.v1.RuntimeCapabilities
+	21, // 29: novitabox.v1.BoxShim.UpdateBalloon:output_type -> novitabox.v1.BalloonConfig
+	21, // 30: novitabox.v1.BoxShim.GetBalloon:output_type -> novitabox.v1.BalloonConfig
+	22, // 31: novitabox.v1.BoxShim.GetBalloonStats:output_type -> novitabox.v1.BalloonStats
+	21, // 32: novitabox.v1.BoxShim.UpdateBalloonStats:output_type -> novitabox.v1.BalloonConfig
+	23, // 33: novitabox.v1.BoxShim.StartBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	23, // 34: novitabox.v1.BoxShim.StopBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	23, // 35: novitabox.v1.BoxShim.GetBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	20, // [20:36] is the sub-list for method output_type
+	4,  // [4:20] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -546,7 +937,7 @@ func file_novitabox_v1_boxshim_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_novitabox_v1_boxshim_proto_rawDesc), len(file_novitabox_v1_boxshim_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

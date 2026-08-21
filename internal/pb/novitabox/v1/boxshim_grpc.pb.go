@@ -20,15 +20,22 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BoxShim_CreateRuntime_FullMethodName = "/novitabox.v1.BoxShim/CreateRuntime"
-	BoxShim_PauseRuntime_FullMethodName  = "/novitabox.v1.BoxShim/PauseRuntime"
-	BoxShim_ResumeRuntime_FullMethodName = "/novitabox.v1.BoxShim/ResumeRuntime"
-	BoxShim_KillRuntime_FullMethodName   = "/novitabox.v1.BoxShim/KillRuntime"
-	BoxShim_StartRuntime_FullMethodName  = "/novitabox.v1.BoxShim/StartRuntime"
-	BoxShim_StopRuntime_FullMethodName   = "/novitabox.v1.BoxShim/StopRuntime"
-	BoxShim_RebootRuntime_FullMethodName = "/novitabox.v1.BoxShim/RebootRuntime"
-	BoxShim_Status_FullMethodName        = "/novitabox.v1.BoxShim/Status"
-	BoxShim_Capabilities_FullMethodName  = "/novitabox.v1.BoxShim/Capabilities"
+	BoxShim_CreateRuntime_FullMethodName       = "/novitabox.v1.BoxShim/CreateRuntime"
+	BoxShim_PauseRuntime_FullMethodName        = "/novitabox.v1.BoxShim/PauseRuntime"
+	BoxShim_ResumeRuntime_FullMethodName       = "/novitabox.v1.BoxShim/ResumeRuntime"
+	BoxShim_KillRuntime_FullMethodName         = "/novitabox.v1.BoxShim/KillRuntime"
+	BoxShim_StartRuntime_FullMethodName        = "/novitabox.v1.BoxShim/StartRuntime"
+	BoxShim_StopRuntime_FullMethodName         = "/novitabox.v1.BoxShim/StopRuntime"
+	BoxShim_RebootRuntime_FullMethodName       = "/novitabox.v1.BoxShim/RebootRuntime"
+	BoxShim_Status_FullMethodName              = "/novitabox.v1.BoxShim/Status"
+	BoxShim_Capabilities_FullMethodName        = "/novitabox.v1.BoxShim/Capabilities"
+	BoxShim_UpdateBalloon_FullMethodName       = "/novitabox.v1.BoxShim/UpdateBalloon"
+	BoxShim_GetBalloon_FullMethodName          = "/novitabox.v1.BoxShim/GetBalloon"
+	BoxShim_GetBalloonStats_FullMethodName     = "/novitabox.v1.BoxShim/GetBalloonStats"
+	BoxShim_UpdateBalloonStats_FullMethodName  = "/novitabox.v1.BoxShim/UpdateBalloonStats"
+	BoxShim_StartBalloonHinting_FullMethodName = "/novitabox.v1.BoxShim/StartBalloonHinting"
+	BoxShim_StopBalloonHinting_FullMethodName  = "/novitabox.v1.BoxShim/StopBalloonHinting"
+	BoxShim_GetBalloonHinting_FullMethodName   = "/novitabox.v1.BoxShim/GetBalloonHinting"
 )
 
 // BoxShimClient is the client API for BoxShim service.
@@ -44,6 +51,13 @@ type BoxShimClient interface {
 	RebootRuntime(ctx context.Context, in *RebootRuntimeRequest, opts ...grpc.CallOption) (*RuntimeInfo, error)
 	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*RuntimeInfo, error)
 	Capabilities(ctx context.Context, in *CapabilitiesRequest, opts ...grpc.CallOption) (*RuntimeCapabilities, error)
+	UpdateBalloon(ctx context.Context, in *UpdateBalloonRequest, opts ...grpc.CallOption) (*BalloonConfig, error)
+	GetBalloon(ctx context.Context, in *GetBalloonRequest, opts ...grpc.CallOption) (*BalloonConfig, error)
+	GetBalloonStats(ctx context.Context, in *GetBalloonStatsRequest, opts ...grpc.CallOption) (*BalloonStats, error)
+	UpdateBalloonStats(ctx context.Context, in *UpdateBalloonStatsRequest, opts ...grpc.CallOption) (*BalloonConfig, error)
+	StartBalloonHinting(ctx context.Context, in *StartBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error)
+	StopBalloonHinting(ctx context.Context, in *StopBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error)
+	GetBalloonHinting(ctx context.Context, in *GetBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error)
 }
 
 type boxShimClient struct {
@@ -144,6 +158,76 @@ func (c *boxShimClient) Capabilities(ctx context.Context, in *CapabilitiesReques
 	return out, nil
 }
 
+func (c *boxShimClient) UpdateBalloon(ctx context.Context, in *UpdateBalloonRequest, opts ...grpc.CallOption) (*BalloonConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonConfig)
+	err := c.cc.Invoke(ctx, BoxShim_UpdateBalloon_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxShimClient) GetBalloon(ctx context.Context, in *GetBalloonRequest, opts ...grpc.CallOption) (*BalloonConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonConfig)
+	err := c.cc.Invoke(ctx, BoxShim_GetBalloon_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxShimClient) GetBalloonStats(ctx context.Context, in *GetBalloonStatsRequest, opts ...grpc.CallOption) (*BalloonStats, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonStats)
+	err := c.cc.Invoke(ctx, BoxShim_GetBalloonStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxShimClient) UpdateBalloonStats(ctx context.Context, in *UpdateBalloonStatsRequest, opts ...grpc.CallOption) (*BalloonConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonConfig)
+	err := c.cc.Invoke(ctx, BoxShim_UpdateBalloonStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxShimClient) StartBalloonHinting(ctx context.Context, in *StartBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonHintingStatus)
+	err := c.cc.Invoke(ctx, BoxShim_StartBalloonHinting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxShimClient) StopBalloonHinting(ctx context.Context, in *StopBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonHintingStatus)
+	err := c.cc.Invoke(ctx, BoxShim_StopBalloonHinting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *boxShimClient) GetBalloonHinting(ctx context.Context, in *GetBalloonHintingRequest, opts ...grpc.CallOption) (*BalloonHintingStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BalloonHintingStatus)
+	err := c.cc.Invoke(ctx, BoxShim_GetBalloonHinting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BoxShimServer is the server API for BoxShim service.
 // All implementations must embed UnimplementedBoxShimServer
 // for forward compatibility.
@@ -157,6 +241,13 @@ type BoxShimServer interface {
 	RebootRuntime(context.Context, *RebootRuntimeRequest) (*RuntimeInfo, error)
 	Status(context.Context, *StatusRequest) (*RuntimeInfo, error)
 	Capabilities(context.Context, *CapabilitiesRequest) (*RuntimeCapabilities, error)
+	UpdateBalloon(context.Context, *UpdateBalloonRequest) (*BalloonConfig, error)
+	GetBalloon(context.Context, *GetBalloonRequest) (*BalloonConfig, error)
+	GetBalloonStats(context.Context, *GetBalloonStatsRequest) (*BalloonStats, error)
+	UpdateBalloonStats(context.Context, *UpdateBalloonStatsRequest) (*BalloonConfig, error)
+	StartBalloonHinting(context.Context, *StartBalloonHintingRequest) (*BalloonHintingStatus, error)
+	StopBalloonHinting(context.Context, *StopBalloonHintingRequest) (*BalloonHintingStatus, error)
+	GetBalloonHinting(context.Context, *GetBalloonHintingRequest) (*BalloonHintingStatus, error)
 	mustEmbedUnimplementedBoxShimServer()
 }
 
@@ -193,6 +284,27 @@ func (UnimplementedBoxShimServer) Status(context.Context, *StatusRequest) (*Runt
 }
 func (UnimplementedBoxShimServer) Capabilities(context.Context, *CapabilitiesRequest) (*RuntimeCapabilities, error) {
 	return nil, status.Error(codes.Unimplemented, "method Capabilities not implemented")
+}
+func (UnimplementedBoxShimServer) UpdateBalloon(context.Context, *UpdateBalloonRequest) (*BalloonConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateBalloon not implemented")
+}
+func (UnimplementedBoxShimServer) GetBalloon(context.Context, *GetBalloonRequest) (*BalloonConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBalloon not implemented")
+}
+func (UnimplementedBoxShimServer) GetBalloonStats(context.Context, *GetBalloonStatsRequest) (*BalloonStats, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBalloonStats not implemented")
+}
+func (UnimplementedBoxShimServer) UpdateBalloonStats(context.Context, *UpdateBalloonStatsRequest) (*BalloonConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateBalloonStats not implemented")
+}
+func (UnimplementedBoxShimServer) StartBalloonHinting(context.Context, *StartBalloonHintingRequest) (*BalloonHintingStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartBalloonHinting not implemented")
+}
+func (UnimplementedBoxShimServer) StopBalloonHinting(context.Context, *StopBalloonHintingRequest) (*BalloonHintingStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method StopBalloonHinting not implemented")
+}
+func (UnimplementedBoxShimServer) GetBalloonHinting(context.Context, *GetBalloonHintingRequest) (*BalloonHintingStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBalloonHinting not implemented")
 }
 func (UnimplementedBoxShimServer) mustEmbedUnimplementedBoxShimServer() {}
 func (UnimplementedBoxShimServer) testEmbeddedByValue()                 {}
@@ -377,6 +489,132 @@ func _BoxShim_Capabilities_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BoxShim_UpdateBalloon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateBalloonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxShimServer).UpdateBalloon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxShim_UpdateBalloon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxShimServer).UpdateBalloon(ctx, req.(*UpdateBalloonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxShim_GetBalloon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBalloonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxShimServer).GetBalloon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxShim_GetBalloon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxShimServer).GetBalloon(ctx, req.(*GetBalloonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxShim_GetBalloonStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBalloonStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxShimServer).GetBalloonStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxShim_GetBalloonStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxShimServer).GetBalloonStats(ctx, req.(*GetBalloonStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxShim_UpdateBalloonStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateBalloonStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxShimServer).UpdateBalloonStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxShim_UpdateBalloonStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxShimServer).UpdateBalloonStats(ctx, req.(*UpdateBalloonStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxShim_StartBalloonHinting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartBalloonHintingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxShimServer).StartBalloonHinting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxShim_StartBalloonHinting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxShimServer).StartBalloonHinting(ctx, req.(*StartBalloonHintingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxShim_StopBalloonHinting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopBalloonHintingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxShimServer).StopBalloonHinting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxShim_StopBalloonHinting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxShimServer).StopBalloonHinting(ctx, req.(*StopBalloonHintingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BoxShim_GetBalloonHinting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBalloonHintingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BoxShimServer).GetBalloonHinting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BoxShim_GetBalloonHinting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BoxShimServer).GetBalloonHinting(ctx, req.(*GetBalloonHintingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BoxShim_ServiceDesc is the grpc.ServiceDesc for BoxShim service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -419,6 +657,34 @@ var BoxShim_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Capabilities",
 			Handler:    _BoxShim_Capabilities_Handler,
+		},
+		{
+			MethodName: "UpdateBalloon",
+			Handler:    _BoxShim_UpdateBalloon_Handler,
+		},
+		{
+			MethodName: "GetBalloon",
+			Handler:    _BoxShim_GetBalloon_Handler,
+		},
+		{
+			MethodName: "GetBalloonStats",
+			Handler:    _BoxShim_GetBalloonStats_Handler,
+		},
+		{
+			MethodName: "UpdateBalloonStats",
+			Handler:    _BoxShim_UpdateBalloonStats_Handler,
+		},
+		{
+			MethodName: "StartBalloonHinting",
+			Handler:    _BoxShim_StartBalloonHinting_Handler,
+		},
+		{
+			MethodName: "StopBalloonHinting",
+			Handler:    _BoxShim_StopBalloonHinting_Handler,
+		},
+		{
+			MethodName: "GetBalloonHinting",
+			Handler:    _BoxShim_GetBalloonHinting_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

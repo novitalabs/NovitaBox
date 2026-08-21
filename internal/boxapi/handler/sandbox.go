@@ -96,6 +96,55 @@ type snapshotResponse struct {
 	CreatedAtUnix int64  `json:"createdAtUnix,omitempty"`
 }
 
+type updateBalloonRequest struct {
+	AmountMiB *uint32 `json:"amountMiB" binding:"required"`
+}
+
+type updateBalloonStatsRequest struct {
+	StatsPollingIntervalS *uint32 `json:"statsPollingIntervalS" binding:"required"`
+}
+
+type startBalloonHintingRequest struct {
+	AcknowledgeOnStop *bool `json:"acknowledgeOnStop"`
+}
+
+type balloonConfigResponse struct {
+	AmountMiB             uint32 `json:"amountMiB"`
+	DeflateOnOOM          bool   `json:"deflateOnOOM"`
+	StatsPollingIntervalS uint32 `json:"statsPollingIntervalS"`
+	FreePageHinting       bool   `json:"freePageHinting"`
+	FreePageReporting     bool   `json:"freePageReporting"`
+}
+
+type balloonStatsResponse struct {
+	TargetMiB          uint32 `json:"targetMiB"`
+	ActualMiB          uint32 `json:"actualMiB"`
+	SwapIn             uint64 `json:"swapIn"`
+	SwapOut            uint64 `json:"swapOut"`
+	MajorFaults        uint64 `json:"majorFaults"`
+	MinorFaults        uint64 `json:"minorFaults"`
+	FreeMemory         uint64 `json:"freeMemory"`
+	TotalMemory        uint64 `json:"totalMemory"`
+	AvailableMemory    uint64 `json:"availableMemory"`
+	DiskCaches         uint64 `json:"diskCaches"`
+	HugetlbAllocations uint64 `json:"hugetlbAllocations"`
+	HugetlbFailures    uint64 `json:"hugetlbFailures"`
+	SharedMemory       uint64 `json:"sharedMemory"`
+	UnevictableMemory  uint64 `json:"unevictableMemory"`
+	OOMKill            uint64 `json:"oomKill"`
+	AllocStall         uint64 `json:"allocStall"`
+	AsyncScan          uint64 `json:"asyncScan"`
+	DirectScan         uint64 `json:"directScan"`
+	AsyncReclaim       uint64 `json:"asyncReclaim"`
+	DirectReclaim      uint64 `json:"directReclaim"`
+}
+
+type balloonHintingResponse struct {
+	State    string  `json:"state"`
+	HostCmd  uint32  `json:"hostCmd"`
+	GuestCmd *uint32 `json:"guestCmd,omitempty"`
+}
+
 func (h *Handler) CreateSandbox(c *gin.Context) {
 	if h.store == nil {
 		response.Error(c, response.ErrInternal("storage is not configured"))
@@ -178,6 +227,169 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusCreated, sandboxRecordResponse(*created))
+}
+
+func (h *Handler) UpdateSandboxBalloon(c *gin.Context) {
+	if !h.ensureBalloonClient(c) {
+		return
+	}
+	var req updateBalloonRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.AmountMiB == nil {
+		response.Error(c, response.ErrBadRequest("amountMiB is required"))
+		return
+	}
+	config, err := h.sandboxClient.UpdateSandboxBalloon(c.Request.Context(), &novitaboxv1.UpdateSandboxBalloonRequest{
+		SandboxId: c.Param("sandbox_id"),
+		AmountMib: *req.AmountMiB,
+	})
+	if err != nil {
+		h.respondSandboxBoxletError(c, err, "update sandbox balloon failed")
+		return
+	}
+	response.JSON(c, http.StatusOK, balloonConfigProtoResponse(config))
+}
+
+func (h *Handler) GetSandboxBalloon(c *gin.Context) {
+	if !h.ensureBalloonClient(c) {
+		return
+	}
+	config, err := h.sandboxClient.GetSandboxBalloon(c.Request.Context(), &novitaboxv1.GetSandboxBalloonRequest{SandboxId: c.Param("sandbox_id")})
+	if err != nil {
+		h.respondSandboxBoxletError(c, err, "get sandbox balloon failed")
+		return
+	}
+	response.JSON(c, http.StatusOK, balloonConfigProtoResponse(config))
+}
+
+func (h *Handler) GetSandboxBalloonStats(c *gin.Context) {
+	if !h.ensureBalloonClient(c) {
+		return
+	}
+	stats, err := h.sandboxClient.GetSandboxBalloonStats(c.Request.Context(), &novitaboxv1.GetSandboxBalloonStatsRequest{SandboxId: c.Param("sandbox_id")})
+	if err != nil {
+		h.respondSandboxBoxletError(c, err, "get sandbox balloon statistics failed")
+		return
+	}
+	response.JSON(c, http.StatusOK, balloonStatsProtoResponse(stats))
+}
+
+func (h *Handler) UpdateSandboxBalloonStats(c *gin.Context) {
+	if !h.ensureBalloonClient(c) {
+		return
+	}
+	var req updateBalloonStatsRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.StatsPollingIntervalS == nil {
+		response.Error(c, response.ErrBadRequest("statsPollingIntervalS is required"))
+		return
+	}
+	config, err := h.sandboxClient.UpdateSandboxBalloonStats(c.Request.Context(), &novitaboxv1.UpdateSandboxBalloonStatsRequest{
+		SandboxId:             c.Param("sandbox_id"),
+		StatsPollingIntervalS: *req.StatsPollingIntervalS,
+	})
+	if err != nil {
+		h.respondSandboxBoxletError(c, err, "update sandbox balloon statistics failed")
+		return
+	}
+	response.JSON(c, http.StatusOK, balloonConfigProtoResponse(config))
+}
+
+func (h *Handler) StartSandboxBalloonHinting(c *gin.Context) {
+	if !h.ensureBalloonClient(c) {
+		return
+	}
+	var req startBalloonHintingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, response.ErrBadRequest("invalid balloon hinting request body"))
+		return
+	}
+	acknowledgeOnStop := true
+	if req.AcknowledgeOnStop != nil {
+		acknowledgeOnStop = *req.AcknowledgeOnStop
+	}
+	status, err := h.sandboxClient.StartSandboxBalloonHinting(c.Request.Context(), &novitaboxv1.StartSandboxBalloonHintingRequest{
+		SandboxId:         c.Param("sandbox_id"),
+		AcknowledgeOnStop: acknowledgeOnStop,
+	})
+	if err != nil {
+		h.respondSandboxBoxletError(c, err, "start sandbox balloon hinting failed")
+		return
+	}
+	response.JSON(c, http.StatusOK, balloonHintingProtoResponse(status))
+}
+
+func (h *Handler) StopSandboxBalloonHinting(c *gin.Context) {
+	if !h.ensureBalloonClient(c) {
+		return
+	}
+	status, err := h.sandboxClient.StopSandboxBalloonHinting(c.Request.Context(), &novitaboxv1.StopSandboxBalloonHintingRequest{SandboxId: c.Param("sandbox_id")})
+	if err != nil {
+		h.respondSandboxBoxletError(c, err, "stop sandbox balloon hinting failed")
+		return
+	}
+	response.JSON(c, http.StatusOK, balloonHintingProtoResponse(status))
+}
+
+func (h *Handler) GetSandboxBalloonHinting(c *gin.Context) {
+	if !h.ensureBalloonClient(c) {
+		return
+	}
+	status, err := h.sandboxClient.GetSandboxBalloonHinting(c.Request.Context(), &novitaboxv1.GetSandboxBalloonHintingRequest{SandboxId: c.Param("sandbox_id")})
+	if err != nil {
+		h.respondSandboxBoxletError(c, err, "get sandbox balloon hinting failed")
+		return
+	}
+	response.JSON(c, http.StatusOK, balloonHintingProtoResponse(status))
+}
+
+func balloonConfigProtoResponse(config *novitaboxv1.BalloonConfig) balloonConfigResponse {
+	return balloonConfigResponse{
+		AmountMiB:             config.GetAmountMib(),
+		DeflateOnOOM:          config.GetDeflateOnOom(),
+		StatsPollingIntervalS: config.GetStatsPollingIntervalS(),
+		FreePageHinting:       config.GetFreePageHinting(),
+		FreePageReporting:     config.GetFreePageReporting(),
+	}
+}
+
+func (h *Handler) ensureBalloonClient(c *gin.Context) bool {
+	if h.sandboxClient != nil {
+		return true
+	}
+	response.Error(c, response.ErrInternal("boxlet sandbox service is not configured"))
+	return false
+}
+
+func balloonStatsProtoResponse(stats *novitaboxv1.BalloonStats) balloonStatsResponse {
+	return balloonStatsResponse{
+		TargetMiB:          stats.GetTargetMib(),
+		ActualMiB:          stats.GetActualMib(),
+		SwapIn:             stats.GetSwapIn(),
+		SwapOut:            stats.GetSwapOut(),
+		MajorFaults:        stats.GetMajorFaults(),
+		MinorFaults:        stats.GetMinorFaults(),
+		FreeMemory:         stats.GetFreeMemory(),
+		TotalMemory:        stats.GetTotalMemory(),
+		AvailableMemory:    stats.GetAvailableMemory(),
+		DiskCaches:         stats.GetDiskCaches(),
+		HugetlbAllocations: stats.GetHugetlbAllocations(),
+		HugetlbFailures:    stats.GetHugetlbFailures(),
+		SharedMemory:       stats.GetSharedMemory(),
+		UnevictableMemory:  stats.GetUnevictableMemory(),
+		OOMKill:            stats.GetOomKill(),
+		AllocStall:         stats.GetAllocStall(),
+		AsyncScan:          stats.GetAsyncScan(),
+		DirectScan:         stats.GetDirectScan(),
+		AsyncReclaim:       stats.GetAsyncReclaim(),
+		DirectReclaim:      stats.GetDirectReclaim(),
+	}
+}
+
+func balloonHintingProtoResponse(status *novitaboxv1.BalloonHintingStatus) balloonHintingResponse {
+	return balloonHintingResponse{
+		State:    status.GetState(),
+		HostCmd:  status.GetHostCmd(),
+		GuestCmd: status.GuestCmd,
+	}
 }
 
 func (h *Handler) ListSandboxes(c *gin.Context) {
@@ -582,6 +794,10 @@ func (h *Handler) respondSandboxBoxletError(c *gin.Context, err error, fallbackM
 		response.Error(c, response.ErrConflict("sandbox already exists"))
 	case codes.InvalidArgument:
 		response.Error(c, response.ErrBadRequest(status.Convert(err).Message()))
+	case codes.FailedPrecondition:
+		response.Error(c, response.ErrConflict(status.Convert(err).Message()))
+	case codes.Unimplemented:
+		response.Error(c, response.ErrNotImplemented(status.Convert(err).Message()))
 	default:
 		message := fallbackMessage
 		if status.Convert(err).Message() != "" {
