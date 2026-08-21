@@ -24,6 +24,7 @@ import (
 	"github.com/novitalabs/NovitaBox/internal/config"
 	"github.com/novitalabs/NovitaBox/internal/log"
 	novitaboxv1 "github.com/novitalabs/NovitaBox/internal/pb/novitabox/v1"
+	"github.com/novitalabs/NovitaBox/internal/rootfs/overlaybd"
 	"github.com/novitalabs/NovitaBox/internal/sandbox"
 	"github.com/novitalabs/NovitaBox/internal/storage/layout"
 	"github.com/novitalabs/NovitaBox/internal/storage/store"
@@ -36,13 +37,33 @@ import (
 
 type sandboxService struct {
 	novitaboxv1.UnimplementedBoxletSandboxServiceServer
-	cfg    config.Config
-	logger *log.Logger
-	store  store.Store
+	cfg       config.Config
+	logger    *log.Logger
+	store     store.Store
+	overlayBD overlayBDRootfsProvider
+}
+
+type overlayBDRootfsProvider interface {
+	Prepare(context.Context, overlaybd.PrepareRequest) (overlaybd.Handle, error)
+	Mount(context.Context, overlaybd.Handle) error
+	Unmount(context.Context, overlaybd.Handle) error
+	Remove(context.Context, overlaybd.Handle) error
+	Close() error
 }
 
 func newSandboxService(cfg config.Config, logger *log.Logger, store store.Store) *sandboxService {
 	return &sandboxService{cfg: cfg, logger: logger, store: store}
+}
+
+func (s *sandboxService) overlayBDProvider() (overlayBDRootfsProvider, func(), error) {
+	if s.overlayBD != nil {
+		return s.overlayBD, func() {}, nil
+	}
+	provider, err := overlaybd.NewContainerdProvider(s.cfg.OverlayBD)
+	if err != nil {
+		return nil, nil, err
+	}
+	return provider, func() { _ = provider.Close() }, nil
 }
 
 func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.CreateSandboxRequest) (*novitaboxv1.SandboxInfo, error) {
@@ -70,12 +91,35 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 		ImageID:     req.GetImageId(),
 		SnapshotID:  req.GetSnapshotId(),
 	}
+	if source := req.GetRootfsSource(); source != nil {
+		if runtimeType != novitaboxv1.RuntimeType_RUNTIME_TYPE_CONTAINER {
+			return nil, status.Error(codes.InvalidArgument, "overlaybd rootfs requires gvisor runtime")
+		}
+		if source.GetProvider() != overlaybd.ProviderName || source.GetImage() == "" {
+			return nil, status.Error(codes.InvalidArgument, "valid overlaybd rootfs image is required")
+		}
+		if source.GetPullMode() != "" && source.GetPullMode() != "lazy" {
+			return nil, status.Error(codes.InvalidArgument, "overlaybd only supports lazy pull mode")
+		}
+		record.RootfsProvider = overlaybd.ProviderName
+		record.RootfsSourceRef = source.GetImage()
+		record.RootfsSnapshotKey = overlaybd.SnapshotKey(sandboxID)
+	}
 	if err := s.store.CreateSandbox(ctx, record); err != nil {
 		if isAlreadyExistsError(err) {
 			return nil, status.Error(codes.AlreadyExists, "sandbox already exists")
 		}
 		return nil, err
 	}
+	createSucceeded := false
+	rootfsPrepared := false
+	defer func() {
+		if !createSucceeded && rootfsPrepared {
+			if err := s.removeOverlayBDRootfs(context.Background(), record); err != nil {
+				s.logger.Warn("rollback overlaybd rootfs failed", "sandbox_id", record.ID, "error", err)
+			}
+		}
+	}()
 	slot, err := s.assignSandboxNetworkSlot(ctx, record.ID)
 	if err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
@@ -88,6 +132,7 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 		_ = s.releaseSandboxNetwork(ctx, record)
 		return nil, err
 	}
+	rootfsPrepared = record.RootfsProvider == overlaybd.ProviderName
 	if err := ensureSnapshotSpecDirs(spec.Snapshot); err != nil {
 		_ = s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateFailed, "create")
 		_ = s.releaseSandboxNetwork(ctx, record)
@@ -130,6 +175,7 @@ func (s *sandboxService) CreateSandbox(ctx context.Context, req *novitaboxv1.Cre
 	if err := s.store.UpdateSandboxState(ctx, sandboxID, sandbox.StateCreating, sandbox.StateRunning, "create"); err != nil {
 		return nil, err
 	}
+	createSucceeded = true
 
 	created, err := s.store.GetSandbox(ctx, sandboxID)
 	if err != nil {
@@ -391,6 +437,9 @@ func (s *sandboxService) KillSandbox(ctx context.Context, req *novitaboxv1.KillS
 	if err := terminateShimProcess(sandboxDir, 5*time.Second); err != nil {
 		s.logger.Warn("terminate sandbox shim failed", "sandbox_id", record.ID, "error", err)
 	}
+	if err := s.removeOverlayBDRootfs(ctx, *record); err != nil {
+		return nil, err
+	}
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateKilled, "kill"); err != nil {
 		return nil, err
 	}
@@ -425,10 +474,21 @@ func (s *sandboxService) deleteSandboxSnapshots(ctx context.Context, sandboxID s
 }
 
 func (s *sandboxService) StopSandbox(ctx context.Context, req *novitaboxv1.StopSandboxRequest) (*novitaboxv1.SandboxInfo, error) {
-	return s.runtimeAction(ctx, req.GetSandboxId(), sandbox.StateStopping, sandbox.StateStopped, "stop", func(shim novitaboxv1.BoxShimClient, sandboxID string) error {
+	info, err := s.runtimeAction(ctx, req.GetSandboxId(), sandbox.StateStopping, sandbox.StateStopped, "stop", func(shim novitaboxv1.BoxShimClient, sandboxID string) error {
 		_, err := shim.StopRuntime(ctx, &novitaboxv1.StopRuntimeRequest{SandboxId: sandboxID, TimeoutSeconds: req.GetTimeoutSeconds()})
 		return err
 	})
+	if err != nil {
+		return nil, err
+	}
+	record, err := s.store.GetSandbox(ctx, req.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.unmountOverlayBDRootfs(ctx, *record); err != nil {
+		return nil, err
+	}
+	return info, nil
 }
 
 func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.StartSandboxRequest) (*novitaboxv1.SandboxInfo, error) {
@@ -448,6 +508,21 @@ func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.Star
 		return nil, err
 	}
 	record.NetworkSlot = slot
+	mountedOverlayBD := false
+	if record.RootfsProvider == overlaybd.ProviderName {
+		if err := s.mountOverlayBDRootfs(ctx, *record); err != nil {
+			_ = s.setSandboxState(ctx, record.ID, sandbox.StateFailed, "start")
+			_ = s.releaseSandboxNetwork(ctx, *record)
+			return nil, err
+		}
+		mountedOverlayBD = true
+	}
+	startSucceeded := false
+	defer func() {
+		if mountedOverlayBD && !startSucceeded {
+			_ = s.unmountOverlayBDRootfs(context.Background(), *record)
+		}
+	}()
 
 	shim, closeShim, err := s.dialSandboxShim(ctx, record.ID)
 	if err != nil {
@@ -481,6 +556,7 @@ func (s *sandboxService) StartSandbox(ctx context.Context, req *novitaboxv1.Star
 	if err := s.setSandboxState(ctx, record.ID, sandbox.StateRunning, "start"); err != nil {
 		return nil, err
 	}
+	startSucceeded = true
 
 	updated, err := s.store.GetSandbox(ctx, record.ID)
 	if err != nil {
@@ -831,6 +907,32 @@ func (s *sandboxService) prepareSandboxRuntimeFiles(ctx context.Context, record 
 			return fmt.Errorf("prepare sandbox kernel: %w", err)
 		}
 	}
+	if record.RootfsProvider == overlaybd.ProviderName {
+		provider, closeProvider, err := s.overlayBDProvider()
+		if err != nil {
+			return err
+		}
+		defer closeProvider()
+		handle, err := provider.Prepare(ctx, overlaybd.PrepareRequest{
+			SandboxID: record.ID,
+			SourceRef: record.RootfsSourceRef,
+			Target:    spec.GetRootfs().GetPath(),
+		})
+		if err != nil {
+			return err
+		}
+		if handle.SourceDigest != "" {
+			if err := s.store.UpdateSandboxRootfsDigest(ctx, record.ID, handle.SourceDigest); err != nil {
+				_ = provider.Remove(context.Background(), handle)
+				return fmt.Errorf("persist overlaybd image digest: %w", err)
+			}
+		}
+		if err := injectGVisorBoxdBinary(s.cfg, handle.Target); err != nil {
+			_ = provider.Remove(context.Background(), handle)
+			return err
+		}
+		return nil
+	}
 	if record.TemplateID != "" {
 		template, err := s.store.GetTemplate(ctx, record.TemplateID)
 		if err != nil {
@@ -862,6 +964,59 @@ func (s *sandboxService) prepareSandboxRuntimeFiles(ctx context.Context, record 
 		return nil
 	}
 
+	return nil
+}
+
+func (s *sandboxService) overlayBDHandle(record store.SandboxRecord) overlaybd.Handle {
+	return overlaybd.Handle{
+		SnapshotKey: record.RootfsSnapshotKey,
+		SourceRef:   record.RootfsSourceRef,
+		Target:      filepath.Join(layout.New(s.cfg.RootDir).SandboxDir(record.ID), "rootfs"),
+	}
+}
+
+func (s *sandboxService) mountOverlayBDRootfs(ctx context.Context, record store.SandboxRecord) error {
+	if record.RootfsProvider != overlaybd.ProviderName {
+		return nil
+	}
+	provider, closeProvider, err := s.overlayBDProvider()
+	if err != nil {
+		return err
+	}
+	defer closeProvider()
+	if err := provider.Mount(ctx, s.overlayBDHandle(record)); err != nil {
+		return fmt.Errorf("mount sandbox overlaybd rootfs: %w", err)
+	}
+	return nil
+}
+
+func (s *sandboxService) unmountOverlayBDRootfs(ctx context.Context, record store.SandboxRecord) error {
+	if record.RootfsProvider != overlaybd.ProviderName {
+		return nil
+	}
+	provider, closeProvider, err := s.overlayBDProvider()
+	if err != nil {
+		return err
+	}
+	defer closeProvider()
+	if err := provider.Unmount(ctx, s.overlayBDHandle(record)); err != nil {
+		return fmt.Errorf("unmount sandbox overlaybd rootfs: %w", err)
+	}
+	return nil
+}
+
+func (s *sandboxService) removeOverlayBDRootfs(ctx context.Context, record store.SandboxRecord) error {
+	if record.RootfsProvider != overlaybd.ProviderName || record.RootfsSnapshotKey == "" {
+		return nil
+	}
+	provider, closeProvider, err := s.overlayBDProvider()
+	if err != nil {
+		return err
+	}
+	defer closeProvider()
+	if err := provider.Remove(ctx, s.overlayBDHandle(record)); err != nil {
+		return fmt.Errorf("remove sandbox overlaybd rootfs: %w", err)
+	}
 	return nil
 }
 
@@ -1015,7 +1170,7 @@ func waitShimReady(ctx context.Context, socketPath string, timeout time.Duration
 }
 
 func sandboxRecordToProto(record store.SandboxRecord, runtimeType novitaboxv1.RuntimeType) *novitaboxv1.SandboxInfo {
-	return &novitaboxv1.SandboxInfo{
+	info := &novitaboxv1.SandboxInfo{
 		SandboxId:     record.ID,
 		State:         sandboxStateToProto(record.State),
 		RuntimeType:   runtimeType,
@@ -1025,6 +1180,15 @@ func sandboxRecordToProto(record store.SandboxRecord, runtimeType novitaboxv1.Ru
 		CreatedAtUnix: record.CreatedAt.Unix(),
 		UpdatedAtUnix: record.UpdatedAt.Unix(),
 	}
+	if record.RootfsProvider != "" && (record.RootfsProvider != "directory" || record.RootfsSourceRef != "" || record.RootfsSourceDigest != "" || record.RootfsSnapshotKey != "") {
+		info.Rootfs = &novitaboxv1.RootfsInfo{
+			Provider:    record.RootfsProvider,
+			Image:       record.RootfsSourceRef,
+			Digest:      record.RootfsSourceDigest,
+			SnapshotKey: record.RootfsSnapshotKey,
+		}
+	}
+	return info
 }
 
 type sandboxRuntimeArtifactPaths struct {
@@ -1409,11 +1573,15 @@ func (s *artifactService) injectTemplateRuntimeFiles(ctx context.Context, paths 
 }
 
 func (s *artifactService) injectTemplateBoxdBinary(rootfsPath string) error {
-	guestPath := s.cfg.Template.BoxdGuestPath
+	return injectGVisorBoxdBinary(s.cfg, rootfsPath)
+}
+
+func injectGVisorBoxdBinary(cfg config.Config, rootfsPath string) error {
+	guestPath := cfg.Template.BoxdGuestPath
 	if guestPath == "" {
 		guestPath = "/novitabox/agent/boxd"
 	}
-	boxdPath := s.cfg.Template.BoxdBinaryPath
+	boxdPath := cfg.Template.BoxdBinaryPath
 	if boxdPath == "" {
 		return errors.New("template boxd binary path is required")
 	}

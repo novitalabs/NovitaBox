@@ -16,6 +16,11 @@ type ServiceOptions struct {
 	BoxshimBinaryPath     string
 	FirecrackerBinaryPath string
 	RunscBinaryPath       string
+	OverlayBDContainerd   string
+	OverlayBDNamespace    string
+	OverlayBDSnapshotter  string
+	OverlayBDCtrBinary    string
+	OverlayBDSocket       string
 	TemplateKernelPath    string
 	TemplateSnapshotWait  uint32
 	TemplateAgentHealth   string
@@ -62,6 +67,21 @@ func ApplyServiceOptions(defaults Config, name string, opts ServiceOptions) (Con
 	}
 	if cfg.GVisor.RunscBinaryPath == "" {
 		cfg.GVisor.RunscBinaryPath = DefaultRunscBinaryPath(cfg.RootDir)
+	}
+	if opts.OverlayBDContainerd != "" {
+		cfg.OverlayBD.ContainerdAddress = opts.OverlayBDContainerd
+	}
+	if opts.OverlayBDNamespace != "" {
+		cfg.OverlayBD.Namespace = opts.OverlayBDNamespace
+	}
+	if opts.OverlayBDSnapshotter != "" {
+		cfg.OverlayBD.Snapshotter = opts.OverlayBDSnapshotter
+	}
+	if opts.OverlayBDCtrBinary != "" {
+		cfg.OverlayBD.CtrBinaryPath = opts.OverlayBDCtrBinary
+	}
+	if opts.OverlayBDSocket != "" {
+		cfg.OverlayBD.SnapshotterSocket = opts.OverlayBDSocket
 	}
 	if opts.TemplateKernelPath != "" {
 		cfg.Template.KernelPath = opts.TemplateKernelPath

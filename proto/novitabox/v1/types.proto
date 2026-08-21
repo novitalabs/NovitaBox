@@ -48,8 +48,16 @@ message SandboxInfo {
   string snapshot_id = 6;
   int64 created_at_unix = 7;
   int64 updated_at_unix = 8;
+  RootfsInfo rootfs = 9;
   map<string, string> labels = 20;
   map<string, string> annotations = 21;
+}
+
+message RootfsInfo {
+  string provider = 1;
+  string image = 2;
+  string digest = 3;
+  string snapshot_key = 4;
 }
 
 message SnapshotInfo {

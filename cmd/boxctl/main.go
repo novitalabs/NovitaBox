@@ -78,6 +78,7 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 	var createSnapshotID string
 	var createRuntimeType string
 	var createGPUCount uint32
+	var createOverlayBDImage string
 	createCmd := &cobra.Command{
 		Use:   "create [template_id]",
 		Short: "Create a sandbox",
@@ -87,8 +88,8 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 			if templateID == "" && len(args) > 0 {
 				templateID = args[0]
 			}
-			if templateID == "" && createImageID == "" && createSnapshotID == "" {
-				return fmt.Errorf("template id, image id, or snapshot id is required")
+			if templateID == "" && createImageID == "" && createSnapshotID == "" && createOverlayBDImage == "" {
+				return fmt.Errorf("template id, image id, snapshot id, or overlaybd image is required")
 			}
 			body := map[string]any{
 				"templateID": templateID,
@@ -105,6 +106,14 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 			if createRuntimeType != "" {
 				body["runtime_type"] = createRuntimeType
 			}
+			if createOverlayBDImage != "" {
+				body["runtime_type"] = "gvisor"
+				body["rootfs"] = map[string]any{
+					"provider": "overlaybd",
+					"image":    createOverlayBDImage,
+					"pullMode": "lazy",
+				}
+			}
 			return requestAndPrint(*apiAddr, http.MethodPost, "/v1/sandboxes", body)
 		},
 	}
@@ -113,6 +122,7 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 	createCmd.Flags().StringVar(&createImageID, "image", "", "image id")
 	createCmd.Flags().StringVar(&createSnapshotID, "snapshot", "", "snapshot id")
 	createCmd.Flags().Uint32Var(&createGPUCount, "gpu", 0, "GPU count")
+	createCmd.Flags().StringVar(&createOverlayBDImage, "overlaybd-image", "", "create a gVisor sandbox directly from an OverlayBD image")
 
 	cmd.AddCommand(createCmd)
 	cmd.AddCommand(listAPICommand(apiAddr, "list", "List sandboxes", "/v1/sandboxes"))

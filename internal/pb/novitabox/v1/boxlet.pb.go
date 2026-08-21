@@ -30,6 +30,7 @@ type CreateSandboxRequest struct {
 	SnapshotId    string                 `protobuf:"bytes,4,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
 	RuntimeType   RuntimeType            `protobuf:"varint,5,opt,name=runtime_type,json=runtimeType,proto3,enum=novitabox.v1.RuntimeType" json:"runtime_type,omitempty"`
 	RuntimeSpec   *RuntimeSpec           `protobuf:"bytes,6,opt,name=runtime_spec,json=runtimeSpec,proto3" json:"runtime_spec,omitempty"`
+	RootfsSource  *RootfsSourceSpec      `protobuf:"bytes,7,opt,name=rootfs_source,json=rootfsSource,proto3" json:"rootfs_source,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,20,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Annotations   map[string]string      `protobuf:"bytes,21,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
@@ -104,6 +105,13 @@ func (x *CreateSandboxRequest) GetRuntimeType() RuntimeType {
 func (x *CreateSandboxRequest) GetRuntimeSpec() *RuntimeSpec {
 	if x != nil {
 		return x.RuntimeSpec
+	}
+	return nil
+}
+
+func (x *CreateSandboxRequest) GetRootfsSource() *RootfsSourceSpec {
+	if x != nil {
+		return x.RootfsSource
 	}
 	return nil
 }
@@ -1734,11 +1742,71 @@ func (x *GetRuntimeCapabilitiesRequest) GetRuntimeType() RuntimeType {
 	return RuntimeType_RUNTIME_TYPE_UNSPECIFIED
 }
 
+type RootfsSourceSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Image         string                 `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`
+	PullMode      string                 `protobuf:"bytes,3,opt,name=pull_mode,json=pullMode,proto3" json:"pull_mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RootfsSourceSpec) Reset() {
+	*x = RootfsSourceSpec{}
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RootfsSourceSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RootfsSourceSpec) ProtoMessage() {}
+
+func (x *RootfsSourceSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_novitabox_v1_boxlet_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RootfsSourceSpec.ProtoReflect.Descriptor instead.
+func (*RootfsSourceSpec) Descriptor() ([]byte, []int) {
+	return file_novitabox_v1_boxlet_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *RootfsSourceSpec) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *RootfsSourceSpec) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *RootfsSourceSpec) GetPullMode() string {
+	if x != nil {
+		return x.PullMode
+	}
+	return ""
+}
+
 var File_novitabox_v1_boxlet_proto protoreflect.FileDescriptor
 
 const file_novitabox_v1_boxlet_proto_rawDesc = "" +
 	"\n" +
-	"\x19novitabox/v1/boxlet.proto\x12\fnovitabox.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x18novitabox/v1/types.proto\"\xa8\x04\n" +
+	"\x19novitabox/v1/boxlet.proto\x12\fnovitabox.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x18novitabox/v1/types.proto\"\xed\x04\n" +
 	"\x14CreateSandboxRequest\x12\x1d\n" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12\x1f\n" +
@@ -1748,7 +1816,8 @@ const file_novitabox_v1_boxlet_proto_rawDesc = "" +
 	"\vsnapshot_id\x18\x04 \x01(\tR\n" +
 	"snapshotId\x12<\n" +
 	"\fruntime_type\x18\x05 \x01(\x0e2\x19.novitabox.v1.RuntimeTypeR\vruntimeType\x12<\n" +
-	"\fruntime_spec\x18\x06 \x01(\v2\x19.novitabox.v1.RuntimeSpecR\vruntimeSpec\x12F\n" +
+	"\fruntime_spec\x18\x06 \x01(\v2\x19.novitabox.v1.RuntimeSpecR\vruntimeSpec\x12C\n" +
+	"\rrootfs_source\x18\a \x01(\v2\x1e.novitabox.v1.RootfsSourceSpecR\frootfsSource\x12F\n" +
 	"\x06labels\x18\x14 \x03(\v2..novitabox.v1.CreateSandboxRequest.LabelsEntryR\x06labels\x12U\n" +
 	"\vannotations\x18\x15 \x03(\v23.novitabox.v1.CreateSandboxRequest.AnnotationsEntryR\vannotations\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
@@ -1882,7 +1951,11 @@ const file_novitabox_v1_boxlet_proto_rawDesc = "" +
 	"\x14ListRuntimesResponse\x128\n" +
 	"\bruntimes\x18\x01 \x03(\v2\x1c.novitabox.v1.RuntimeSummaryR\bruntimes\"]\n" +
 	"\x1dGetRuntimeCapabilitiesRequest\x12<\n" +
-	"\fruntime_type\x18\x01 \x01(\x0e2\x19.novitabox.v1.RuntimeTypeR\vruntimeType2\xb6\v\n" +
+	"\fruntime_type\x18\x01 \x01(\x0e2\x19.novitabox.v1.RuntimeTypeR\vruntimeType\"a\n" +
+	"\x10RootfsSourceSpec\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x14\n" +
+	"\x05image\x18\x02 \x01(\tR\x05image\x12\x1b\n" +
+	"\tpull_mode\x18\x03 \x01(\tR\bpullMode2\xb6\v\n" +
 	"\x14BoxletSandboxService\x12N\n" +
 	"\rCreateSandbox\x12\".novitabox.v1.CreateSandboxRequest\x1a\x19.novitabox.v1.SandboxInfo\x12M\n" +
 	"\fPauseSandbox\x12!.novitabox.v1.PauseSandboxRequest\x1a\x1a.novitabox.v1.SnapshotInfo\x12N\n" +
@@ -1929,7 +2002,7 @@ func file_novitabox_v1_boxlet_proto_rawDescGZIP() []byte {
 	return file_novitabox_v1_boxlet_proto_rawDescData
 }
 
-var file_novitabox_v1_boxlet_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_novitabox_v1_boxlet_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
 var file_novitabox_v1_boxlet_proto_goTypes = []any{
 	(*CreateSandboxRequest)(nil),              // 0: novitabox.v1.CreateSandboxRequest
 	(*PauseSandboxRequest)(nil),               // 1: novitabox.v1.PauseSandboxRequest
@@ -1965,105 +2038,107 @@ var file_novitabox_v1_boxlet_proto_goTypes = []any{
 	(*RuntimeSummary)(nil),                    // 31: novitabox.v1.RuntimeSummary
 	(*ListRuntimesResponse)(nil),              // 32: novitabox.v1.ListRuntimesResponse
 	(*GetRuntimeCapabilitiesRequest)(nil),     // 33: novitabox.v1.GetRuntimeCapabilitiesRequest
-	nil,                                       // 34: novitabox.v1.CreateSandboxRequest.LabelsEntry
-	nil,                                       // 35: novitabox.v1.CreateSandboxRequest.AnnotationsEntry
-	nil,                                       // 36: novitabox.v1.ListSandboxesRequest.LabelSelectorEntry
-	nil,                                       // 37: novitabox.v1.CreateTemplateRequest.LabelsEntry
-	nil,                                       // 38: novitabox.v1.TemplateBuildStep.EnvVarsEntry
-	nil,                                       // 39: novitabox.v1.ListTemplatesRequest.LabelSelectorEntry
-	nil,                                       // 40: novitabox.v1.CreateImageRequest.LabelsEntry
-	nil,                                       // 41: novitabox.v1.ListImagesRequest.LabelSelectorEntry
-	(RuntimeType)(0),                          // 42: novitabox.v1.RuntimeType
-	(*RuntimeSpec)(nil),                       // 43: novitabox.v1.RuntimeSpec
-	(*SandboxInfo)(nil),                       // 44: novitabox.v1.SandboxInfo
-	(*TemplateInfo)(nil),                      // 45: novitabox.v1.TemplateInfo
-	(*ImageInfo)(nil),                         // 46: novitabox.v1.ImageInfo
-	(*RuntimeCapabilities)(nil),               // 47: novitabox.v1.RuntimeCapabilities
-	(*SnapshotInfo)(nil),                      // 48: novitabox.v1.SnapshotInfo
-	(*emptypb.Empty)(nil),                     // 49: google.protobuf.Empty
-	(*BalloonConfig)(nil),                     // 50: novitabox.v1.BalloonConfig
-	(*BalloonStats)(nil),                      // 51: novitabox.v1.BalloonStats
-	(*BalloonHintingStatus)(nil),              // 52: novitabox.v1.BalloonHintingStatus
+	(*RootfsSourceSpec)(nil),                  // 34: novitabox.v1.RootfsSourceSpec
+	nil,                                       // 35: novitabox.v1.CreateSandboxRequest.LabelsEntry
+	nil,                                       // 36: novitabox.v1.CreateSandboxRequest.AnnotationsEntry
+	nil,                                       // 37: novitabox.v1.ListSandboxesRequest.LabelSelectorEntry
+	nil,                                       // 38: novitabox.v1.CreateTemplateRequest.LabelsEntry
+	nil,                                       // 39: novitabox.v1.TemplateBuildStep.EnvVarsEntry
+	nil,                                       // 40: novitabox.v1.ListTemplatesRequest.LabelSelectorEntry
+	nil,                                       // 41: novitabox.v1.CreateImageRequest.LabelsEntry
+	nil,                                       // 42: novitabox.v1.ListImagesRequest.LabelSelectorEntry
+	(RuntimeType)(0),                          // 43: novitabox.v1.RuntimeType
+	(*RuntimeSpec)(nil),                       // 44: novitabox.v1.RuntimeSpec
+	(*SandboxInfo)(nil),                       // 45: novitabox.v1.SandboxInfo
+	(*TemplateInfo)(nil),                      // 46: novitabox.v1.TemplateInfo
+	(*ImageInfo)(nil),                         // 47: novitabox.v1.ImageInfo
+	(*RuntimeCapabilities)(nil),               // 48: novitabox.v1.RuntimeCapabilities
+	(*SnapshotInfo)(nil),                      // 49: novitabox.v1.SnapshotInfo
+	(*emptypb.Empty)(nil),                     // 50: google.protobuf.Empty
+	(*BalloonConfig)(nil),                     // 51: novitabox.v1.BalloonConfig
+	(*BalloonStats)(nil),                      // 52: novitabox.v1.BalloonStats
+	(*BalloonHintingStatus)(nil),              // 53: novitabox.v1.BalloonHintingStatus
 }
 var file_novitabox_v1_boxlet_proto_depIdxs = []int32{
-	42, // 0: novitabox.v1.CreateSandboxRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
-	43, // 1: novitabox.v1.CreateSandboxRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
-	34, // 2: novitabox.v1.CreateSandboxRequest.labels:type_name -> novitabox.v1.CreateSandboxRequest.LabelsEntry
-	35, // 3: novitabox.v1.CreateSandboxRequest.annotations:type_name -> novitabox.v1.CreateSandboxRequest.AnnotationsEntry
-	36, // 4: novitabox.v1.ListSandboxesRequest.label_selector:type_name -> novitabox.v1.ListSandboxesRequest.LabelSelectorEntry
-	44, // 5: novitabox.v1.ListSandboxesResponse.sandboxes:type_name -> novitabox.v1.SandboxInfo
-	18, // 6: novitabox.v1.CreateTemplateRequest.steps:type_name -> novitabox.v1.TemplateBuildStep
-	37, // 7: novitabox.v1.CreateTemplateRequest.labels:type_name -> novitabox.v1.CreateTemplateRequest.LabelsEntry
-	38, // 8: novitabox.v1.TemplateBuildStep.env_vars:type_name -> novitabox.v1.TemplateBuildStep.EnvVarsEntry
-	39, // 9: novitabox.v1.ListTemplatesRequest.label_selector:type_name -> novitabox.v1.ListTemplatesRequest.LabelSelectorEntry
-	45, // 10: novitabox.v1.ListTemplatesResponse.templates:type_name -> novitabox.v1.TemplateInfo
-	40, // 11: novitabox.v1.CreateImageRequest.labels:type_name -> novitabox.v1.CreateImageRequest.LabelsEntry
-	41, // 12: novitabox.v1.ListImagesRequest.label_selector:type_name -> novitabox.v1.ListImagesRequest.LabelSelectorEntry
-	46, // 13: novitabox.v1.ListImagesResponse.images:type_name -> novitabox.v1.ImageInfo
-	42, // 14: novitabox.v1.NodeStatusInfo.runtime_types:type_name -> novitabox.v1.RuntimeType
-	42, // 15: novitabox.v1.RuntimeSummary.runtime_type:type_name -> novitabox.v1.RuntimeType
-	47, // 16: novitabox.v1.RuntimeSummary.capabilities:type_name -> novitabox.v1.RuntimeCapabilities
-	31, // 17: novitabox.v1.ListRuntimesResponse.runtimes:type_name -> novitabox.v1.RuntimeSummary
-	42, // 18: novitabox.v1.GetRuntimeCapabilitiesRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
-	0,  // 19: novitabox.v1.BoxletSandboxService.CreateSandbox:input_type -> novitabox.v1.CreateSandboxRequest
-	1,  // 20: novitabox.v1.BoxletSandboxService.PauseSandbox:input_type -> novitabox.v1.PauseSandboxRequest
-	2,  // 21: novitabox.v1.BoxletSandboxService.ResumeSandbox:input_type -> novitabox.v1.ResumeSandboxRequest
-	3,  // 22: novitabox.v1.BoxletSandboxService.KillSandbox:input_type -> novitabox.v1.KillSandboxRequest
-	4,  // 23: novitabox.v1.BoxletSandboxService.StartSandbox:input_type -> novitabox.v1.StartSandboxRequest
-	5,  // 24: novitabox.v1.BoxletSandboxService.StopSandbox:input_type -> novitabox.v1.StopSandboxRequest
-	6,  // 25: novitabox.v1.BoxletSandboxService.RebootSandbox:input_type -> novitabox.v1.RebootSandboxRequest
-	7,  // 26: novitabox.v1.BoxletSandboxService.GetSandbox:input_type -> novitabox.v1.GetSandboxRequest
-	8,  // 27: novitabox.v1.BoxletSandboxService.ListSandboxes:input_type -> novitabox.v1.ListSandboxesRequest
-	10, // 28: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloon:input_type -> novitabox.v1.UpdateSandboxBalloonRequest
-	11, // 29: novitabox.v1.BoxletSandboxService.GetSandboxBalloon:input_type -> novitabox.v1.GetSandboxBalloonRequest
-	12, // 30: novitabox.v1.BoxletSandboxService.GetSandboxBalloonStats:input_type -> novitabox.v1.GetSandboxBalloonStatsRequest
-	13, // 31: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloonStats:input_type -> novitabox.v1.UpdateSandboxBalloonStatsRequest
-	14, // 32: novitabox.v1.BoxletSandboxService.StartSandboxBalloonHinting:input_type -> novitabox.v1.StartSandboxBalloonHintingRequest
-	15, // 33: novitabox.v1.BoxletSandboxService.StopSandboxBalloonHinting:input_type -> novitabox.v1.StopSandboxBalloonHintingRequest
-	16, // 34: novitabox.v1.BoxletSandboxService.GetSandboxBalloonHinting:input_type -> novitabox.v1.GetSandboxBalloonHintingRequest
-	17, // 35: novitabox.v1.BoxletArtifactService.CreateTemplate:input_type -> novitabox.v1.CreateTemplateRequest
-	19, // 36: novitabox.v1.BoxletArtifactService.DeleteTemplate:input_type -> novitabox.v1.DeleteTemplateRequest
-	20, // 37: novitabox.v1.BoxletArtifactService.GetTemplate:input_type -> novitabox.v1.GetTemplateRequest
-	21, // 38: novitabox.v1.BoxletArtifactService.ListTemplates:input_type -> novitabox.v1.ListTemplatesRequest
-	23, // 39: novitabox.v1.BoxletArtifactService.CreateImage:input_type -> novitabox.v1.CreateImageRequest
-	24, // 40: novitabox.v1.BoxletArtifactService.DeleteImage:input_type -> novitabox.v1.DeleteImageRequest
-	25, // 41: novitabox.v1.BoxletArtifactService.GetImage:input_type -> novitabox.v1.GetImageRequest
-	26, // 42: novitabox.v1.BoxletArtifactService.ListImages:input_type -> novitabox.v1.ListImagesRequest
-	28, // 43: novitabox.v1.BoxletNodeService.NodeStatus:input_type -> novitabox.v1.NodeStatusRequest
-	30, // 44: novitabox.v1.BoxletNodeService.ListRuntimes:input_type -> novitabox.v1.ListRuntimesRequest
-	33, // 45: novitabox.v1.BoxletNodeService.GetRuntimeCapabilities:input_type -> novitabox.v1.GetRuntimeCapabilitiesRequest
-	44, // 46: novitabox.v1.BoxletSandboxService.CreateSandbox:output_type -> novitabox.v1.SandboxInfo
-	48, // 47: novitabox.v1.BoxletSandboxService.PauseSandbox:output_type -> novitabox.v1.SnapshotInfo
-	44, // 48: novitabox.v1.BoxletSandboxService.ResumeSandbox:output_type -> novitabox.v1.SandboxInfo
-	49, // 49: novitabox.v1.BoxletSandboxService.KillSandbox:output_type -> google.protobuf.Empty
-	44, // 50: novitabox.v1.BoxletSandboxService.StartSandbox:output_type -> novitabox.v1.SandboxInfo
-	44, // 51: novitabox.v1.BoxletSandboxService.StopSandbox:output_type -> novitabox.v1.SandboxInfo
-	44, // 52: novitabox.v1.BoxletSandboxService.RebootSandbox:output_type -> novitabox.v1.SandboxInfo
-	44, // 53: novitabox.v1.BoxletSandboxService.GetSandbox:output_type -> novitabox.v1.SandboxInfo
-	9,  // 54: novitabox.v1.BoxletSandboxService.ListSandboxes:output_type -> novitabox.v1.ListSandboxesResponse
-	50, // 55: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloon:output_type -> novitabox.v1.BalloonConfig
-	50, // 56: novitabox.v1.BoxletSandboxService.GetSandboxBalloon:output_type -> novitabox.v1.BalloonConfig
-	51, // 57: novitabox.v1.BoxletSandboxService.GetSandboxBalloonStats:output_type -> novitabox.v1.BalloonStats
-	50, // 58: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloonStats:output_type -> novitabox.v1.BalloonConfig
-	52, // 59: novitabox.v1.BoxletSandboxService.StartSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
-	52, // 60: novitabox.v1.BoxletSandboxService.StopSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
-	52, // 61: novitabox.v1.BoxletSandboxService.GetSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
-	45, // 62: novitabox.v1.BoxletArtifactService.CreateTemplate:output_type -> novitabox.v1.TemplateInfo
-	49, // 63: novitabox.v1.BoxletArtifactService.DeleteTemplate:output_type -> google.protobuf.Empty
-	45, // 64: novitabox.v1.BoxletArtifactService.GetTemplate:output_type -> novitabox.v1.TemplateInfo
-	22, // 65: novitabox.v1.BoxletArtifactService.ListTemplates:output_type -> novitabox.v1.ListTemplatesResponse
-	46, // 66: novitabox.v1.BoxletArtifactService.CreateImage:output_type -> novitabox.v1.ImageInfo
-	49, // 67: novitabox.v1.BoxletArtifactService.DeleteImage:output_type -> google.protobuf.Empty
-	46, // 68: novitabox.v1.BoxletArtifactService.GetImage:output_type -> novitabox.v1.ImageInfo
-	27, // 69: novitabox.v1.BoxletArtifactService.ListImages:output_type -> novitabox.v1.ListImagesResponse
-	29, // 70: novitabox.v1.BoxletNodeService.NodeStatus:output_type -> novitabox.v1.NodeStatusInfo
-	32, // 71: novitabox.v1.BoxletNodeService.ListRuntimes:output_type -> novitabox.v1.ListRuntimesResponse
-	47, // 72: novitabox.v1.BoxletNodeService.GetRuntimeCapabilities:output_type -> novitabox.v1.RuntimeCapabilities
-	46, // [46:73] is the sub-list for method output_type
-	19, // [19:46] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	43, // 0: novitabox.v1.CreateSandboxRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
+	44, // 1: novitabox.v1.CreateSandboxRequest.runtime_spec:type_name -> novitabox.v1.RuntimeSpec
+	34, // 2: novitabox.v1.CreateSandboxRequest.rootfs_source:type_name -> novitabox.v1.RootfsSourceSpec
+	35, // 3: novitabox.v1.CreateSandboxRequest.labels:type_name -> novitabox.v1.CreateSandboxRequest.LabelsEntry
+	36, // 4: novitabox.v1.CreateSandboxRequest.annotations:type_name -> novitabox.v1.CreateSandboxRequest.AnnotationsEntry
+	37, // 5: novitabox.v1.ListSandboxesRequest.label_selector:type_name -> novitabox.v1.ListSandboxesRequest.LabelSelectorEntry
+	45, // 6: novitabox.v1.ListSandboxesResponse.sandboxes:type_name -> novitabox.v1.SandboxInfo
+	18, // 7: novitabox.v1.CreateTemplateRequest.steps:type_name -> novitabox.v1.TemplateBuildStep
+	38, // 8: novitabox.v1.CreateTemplateRequest.labels:type_name -> novitabox.v1.CreateTemplateRequest.LabelsEntry
+	39, // 9: novitabox.v1.TemplateBuildStep.env_vars:type_name -> novitabox.v1.TemplateBuildStep.EnvVarsEntry
+	40, // 10: novitabox.v1.ListTemplatesRequest.label_selector:type_name -> novitabox.v1.ListTemplatesRequest.LabelSelectorEntry
+	46, // 11: novitabox.v1.ListTemplatesResponse.templates:type_name -> novitabox.v1.TemplateInfo
+	41, // 12: novitabox.v1.CreateImageRequest.labels:type_name -> novitabox.v1.CreateImageRequest.LabelsEntry
+	42, // 13: novitabox.v1.ListImagesRequest.label_selector:type_name -> novitabox.v1.ListImagesRequest.LabelSelectorEntry
+	47, // 14: novitabox.v1.ListImagesResponse.images:type_name -> novitabox.v1.ImageInfo
+	43, // 15: novitabox.v1.NodeStatusInfo.runtime_types:type_name -> novitabox.v1.RuntimeType
+	43, // 16: novitabox.v1.RuntimeSummary.runtime_type:type_name -> novitabox.v1.RuntimeType
+	48, // 17: novitabox.v1.RuntimeSummary.capabilities:type_name -> novitabox.v1.RuntimeCapabilities
+	31, // 18: novitabox.v1.ListRuntimesResponse.runtimes:type_name -> novitabox.v1.RuntimeSummary
+	43, // 19: novitabox.v1.GetRuntimeCapabilitiesRequest.runtime_type:type_name -> novitabox.v1.RuntimeType
+	0,  // 20: novitabox.v1.BoxletSandboxService.CreateSandbox:input_type -> novitabox.v1.CreateSandboxRequest
+	1,  // 21: novitabox.v1.BoxletSandboxService.PauseSandbox:input_type -> novitabox.v1.PauseSandboxRequest
+	2,  // 22: novitabox.v1.BoxletSandboxService.ResumeSandbox:input_type -> novitabox.v1.ResumeSandboxRequest
+	3,  // 23: novitabox.v1.BoxletSandboxService.KillSandbox:input_type -> novitabox.v1.KillSandboxRequest
+	4,  // 24: novitabox.v1.BoxletSandboxService.StartSandbox:input_type -> novitabox.v1.StartSandboxRequest
+	5,  // 25: novitabox.v1.BoxletSandboxService.StopSandbox:input_type -> novitabox.v1.StopSandboxRequest
+	6,  // 26: novitabox.v1.BoxletSandboxService.RebootSandbox:input_type -> novitabox.v1.RebootSandboxRequest
+	7,  // 27: novitabox.v1.BoxletSandboxService.GetSandbox:input_type -> novitabox.v1.GetSandboxRequest
+	8,  // 28: novitabox.v1.BoxletSandboxService.ListSandboxes:input_type -> novitabox.v1.ListSandboxesRequest
+	10, // 29: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloon:input_type -> novitabox.v1.UpdateSandboxBalloonRequest
+	11, // 30: novitabox.v1.BoxletSandboxService.GetSandboxBalloon:input_type -> novitabox.v1.GetSandboxBalloonRequest
+	12, // 31: novitabox.v1.BoxletSandboxService.GetSandboxBalloonStats:input_type -> novitabox.v1.GetSandboxBalloonStatsRequest
+	13, // 32: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloonStats:input_type -> novitabox.v1.UpdateSandboxBalloonStatsRequest
+	14, // 33: novitabox.v1.BoxletSandboxService.StartSandboxBalloonHinting:input_type -> novitabox.v1.StartSandboxBalloonHintingRequest
+	15, // 34: novitabox.v1.BoxletSandboxService.StopSandboxBalloonHinting:input_type -> novitabox.v1.StopSandboxBalloonHintingRequest
+	16, // 35: novitabox.v1.BoxletSandboxService.GetSandboxBalloonHinting:input_type -> novitabox.v1.GetSandboxBalloonHintingRequest
+	17, // 36: novitabox.v1.BoxletArtifactService.CreateTemplate:input_type -> novitabox.v1.CreateTemplateRequest
+	19, // 37: novitabox.v1.BoxletArtifactService.DeleteTemplate:input_type -> novitabox.v1.DeleteTemplateRequest
+	20, // 38: novitabox.v1.BoxletArtifactService.GetTemplate:input_type -> novitabox.v1.GetTemplateRequest
+	21, // 39: novitabox.v1.BoxletArtifactService.ListTemplates:input_type -> novitabox.v1.ListTemplatesRequest
+	23, // 40: novitabox.v1.BoxletArtifactService.CreateImage:input_type -> novitabox.v1.CreateImageRequest
+	24, // 41: novitabox.v1.BoxletArtifactService.DeleteImage:input_type -> novitabox.v1.DeleteImageRequest
+	25, // 42: novitabox.v1.BoxletArtifactService.GetImage:input_type -> novitabox.v1.GetImageRequest
+	26, // 43: novitabox.v1.BoxletArtifactService.ListImages:input_type -> novitabox.v1.ListImagesRequest
+	28, // 44: novitabox.v1.BoxletNodeService.NodeStatus:input_type -> novitabox.v1.NodeStatusRequest
+	30, // 45: novitabox.v1.BoxletNodeService.ListRuntimes:input_type -> novitabox.v1.ListRuntimesRequest
+	33, // 46: novitabox.v1.BoxletNodeService.GetRuntimeCapabilities:input_type -> novitabox.v1.GetRuntimeCapabilitiesRequest
+	45, // 47: novitabox.v1.BoxletSandboxService.CreateSandbox:output_type -> novitabox.v1.SandboxInfo
+	49, // 48: novitabox.v1.BoxletSandboxService.PauseSandbox:output_type -> novitabox.v1.SnapshotInfo
+	45, // 49: novitabox.v1.BoxletSandboxService.ResumeSandbox:output_type -> novitabox.v1.SandboxInfo
+	50, // 50: novitabox.v1.BoxletSandboxService.KillSandbox:output_type -> google.protobuf.Empty
+	45, // 51: novitabox.v1.BoxletSandboxService.StartSandbox:output_type -> novitabox.v1.SandboxInfo
+	45, // 52: novitabox.v1.BoxletSandboxService.StopSandbox:output_type -> novitabox.v1.SandboxInfo
+	45, // 53: novitabox.v1.BoxletSandboxService.RebootSandbox:output_type -> novitabox.v1.SandboxInfo
+	45, // 54: novitabox.v1.BoxletSandboxService.GetSandbox:output_type -> novitabox.v1.SandboxInfo
+	9,  // 55: novitabox.v1.BoxletSandboxService.ListSandboxes:output_type -> novitabox.v1.ListSandboxesResponse
+	51, // 56: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloon:output_type -> novitabox.v1.BalloonConfig
+	51, // 57: novitabox.v1.BoxletSandboxService.GetSandboxBalloon:output_type -> novitabox.v1.BalloonConfig
+	52, // 58: novitabox.v1.BoxletSandboxService.GetSandboxBalloonStats:output_type -> novitabox.v1.BalloonStats
+	51, // 59: novitabox.v1.BoxletSandboxService.UpdateSandboxBalloonStats:output_type -> novitabox.v1.BalloonConfig
+	53, // 60: novitabox.v1.BoxletSandboxService.StartSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	53, // 61: novitabox.v1.BoxletSandboxService.StopSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	53, // 62: novitabox.v1.BoxletSandboxService.GetSandboxBalloonHinting:output_type -> novitabox.v1.BalloonHintingStatus
+	46, // 63: novitabox.v1.BoxletArtifactService.CreateTemplate:output_type -> novitabox.v1.TemplateInfo
+	50, // 64: novitabox.v1.BoxletArtifactService.DeleteTemplate:output_type -> google.protobuf.Empty
+	46, // 65: novitabox.v1.BoxletArtifactService.GetTemplate:output_type -> novitabox.v1.TemplateInfo
+	22, // 66: novitabox.v1.BoxletArtifactService.ListTemplates:output_type -> novitabox.v1.ListTemplatesResponse
+	47, // 67: novitabox.v1.BoxletArtifactService.CreateImage:output_type -> novitabox.v1.ImageInfo
+	50, // 68: novitabox.v1.BoxletArtifactService.DeleteImage:output_type -> google.protobuf.Empty
+	47, // 69: novitabox.v1.BoxletArtifactService.GetImage:output_type -> novitabox.v1.ImageInfo
+	27, // 70: novitabox.v1.BoxletArtifactService.ListImages:output_type -> novitabox.v1.ListImagesResponse
+	29, // 71: novitabox.v1.BoxletNodeService.NodeStatus:output_type -> novitabox.v1.NodeStatusInfo
+	32, // 72: novitabox.v1.BoxletNodeService.ListRuntimes:output_type -> novitabox.v1.ListRuntimesResponse
+	48, // 73: novitabox.v1.BoxletNodeService.GetRuntimeCapabilities:output_type -> novitabox.v1.RuntimeCapabilities
+	47, // [47:74] is the sub-list for method output_type
+	20, // [20:47] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_novitabox_v1_boxlet_proto_init() }
@@ -2078,7 +2153,7 @@ func file_novitabox_v1_boxlet_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_novitabox_v1_boxlet_proto_rawDesc), len(file_novitabox_v1_boxlet_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   42,
+			NumMessages:   43,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

@@ -1220,12 +1220,19 @@ func runMountBind(src string, dst string) error {
 }
 
 func unmountUnder(root string) error {
+	return unmountUnderExcept(root)
+}
+
+func unmountUnderExcept(root string, preserved ...string) error {
 	mounts, err := mountPointsUnder(root)
 	if err != nil {
 		return err
 	}
 	var errs []string
 	for _, target := range mounts {
+		if pathPreserved(target, preserved) {
+			continue
+		}
 		cmd := exec.Command("umount", "-l", target)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			errs = append(errs, fmt.Sprintf("umount %q: %v: %s", target, err, strings.TrimSpace(string(out))))
@@ -1235,6 +1242,16 @@ func unmountUnder(root string) error {
 		return errors.New(strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+func pathPreserved(target string, preserved []string) bool {
+	target = filepath.Clean(target)
+	for _, path := range preserved {
+		if target == filepath.Clean(path) {
+			return true
+		}
+	}
+	return false
 }
 
 func UnmountUnder(root string) error {

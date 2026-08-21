@@ -11,15 +11,19 @@ import (
 var ErrNotFound = errors.New("record not found")
 
 type SandboxRecord struct {
-	ID          string
-	State       sandbox.State
-	RuntimeType string
-	TemplateID  string
-	ImageID     string
-	SnapshotID  string
-	NetworkSlot uint32
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                 string
+	State              sandbox.State
+	RuntimeType        string
+	TemplateID         string
+	ImageID            string
+	SnapshotID         string
+	NetworkSlot        uint32
+	RootfsProvider     string
+	RootfsSourceRef    string
+	RootfsSourceDigest string
+	RootfsSnapshotKey  string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type ImageRecord struct {
@@ -90,6 +94,7 @@ type Store interface {
 	UpdateSandboxState(ctx context.Context, sandboxID string, from, to sandbox.State, action string) error
 	AssignSandboxNetworkSlot(ctx context.Context, sandboxID string, maxSlot uint32) (uint32, error)
 	ReleaseSandboxNetworkSlot(ctx context.Context, sandboxID string) error
+	UpdateSandboxRootfsDigest(ctx context.Context, sandboxID string, sourceDigest string) error
 	DeleteSandbox(ctx context.Context, sandboxID string) error
 
 	CreateImage(ctx context.Context, record ImageRecord) error

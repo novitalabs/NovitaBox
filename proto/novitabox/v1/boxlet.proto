@@ -50,6 +50,7 @@ message CreateSandboxRequest {
   string snapshot_id = 4;
   RuntimeType runtime_type = 5;
   RuntimeSpec runtime_spec = 6;
+  RootfsSourceSpec rootfs_source = 7;
   map<string, string> labels = 20;
   map<string, string> annotations = 21;
 }
@@ -204,4 +205,10 @@ message ListRuntimesResponse {
 
 message GetRuntimeCapabilitiesRequest {
   RuntimeType runtime_type = 1;
+}
+
+message RootfsSourceSpec {
+  string provider = 1;
+  string image = 2;
+  string pull_mode = 3;
 }

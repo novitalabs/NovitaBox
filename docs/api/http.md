@@ -92,6 +92,23 @@ curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes \
   -d '{"templateID":"tpl-xxxxxxxxxxxxxxxxxxxx","runtime_type":"gvisor","gpu":1}'
 ```
 
+Create a gVisor sandbox directly from a pre-converted OverlayBD image. This path does not create or build a NovitaBox template:
+
+```bash
+curl -i -X POST http://127.0.0.1:8080/v1/sandboxes \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "runtime_type":"gvisor",
+    "rootfs":{
+      "provider":"overlaybd",
+      "image":"registry.example.com/team/ubuntu:overlaybd",
+      "pullMode":"lazy"
+    }
+  }'
+```
+
+Only `gvisor` and `lazy` pull mode are accepted for an OverlayBD rootfs. The image must already be in OverlayBD format.
+
 Create from an image:
 
 ```bash
@@ -106,11 +123,47 @@ List sandboxes:
 curl -sS http://127.0.0.1:8080/v1/sandboxes
 ```
 
+The response is a top-level array, consistent with the template list API. An empty result is returned as `[]`:
+
+```json
+[
+  {
+    "sandboxID":"sbx-xxxxxxxxxxxxxxxxxxxx",
+    "state":"running",
+    "runtimeType":"gvisor",
+    "rootfs":{
+      "provider":"overlaybd",
+      "image":"registry.example.com/team/ubuntu:overlaybd",
+      "digest":"sha256:...",
+      "snapshotKey":"novitabox-sandbox-sbx-xxxxxxxxxxxxxxxxxxxx"
+    }
+  }
+]
+```
+
 Get sandbox info:
 
 ```bash
 curl -sS http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx
 ```
+
+For an OverlayBD sandbox, the response includes the original image reference, resolved manifest digest, and writable snapshot key:
+
+```json
+{
+  "sandboxID":"sbx-xxxxxxxxxxxxxxxxxxxx",
+  "state":"running",
+  "runtimeType":"gvisor",
+  "rootfs":{
+    "provider":"overlaybd",
+    "image":"registry.example.com/team/ubuntu:overlaybd",
+    "digest":"sha256:...",
+    "snapshotKey":"novitabox-sandbox-sbx-xxxxxxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+The image reference and digest are stored separately. Resolving or pulling the image no longer replaces the user-supplied image reference with its digest.
 
 Pause and resume:
 

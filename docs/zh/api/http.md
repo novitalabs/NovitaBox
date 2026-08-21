@@ -88,6 +88,23 @@ curl -sS -X POST \
 
 ## Sandbox
 
+直接从已经转换好的 OverlayBD image 创建 gVisor sandbox。该流程不会创建或构建 NovitaBox template：
+
+```bash
+curl -i -X POST http://127.0.0.1:8080/v1/sandboxes \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "runtime_type":"gvisor",
+    "rootfs":{
+      "provider":"overlaybd",
+      "image":"registry.example.com/team/ubuntu:overlaybd",
+      "pullMode":"lazy"
+    }
+  }'
+```
+
+OverlayBD rootfs 当前只支持 `gvisor` 和 `lazy` pull mode，并要求 image 已经完成 OverlayBD 格式转换。
+
 从 template 创建：
 
 ```bash
@@ -110,6 +127,42 @@ curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes \
 curl -sS http://127.0.0.1:8080/v1/sandboxes
 curl -sS http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx
 ```
+
+`GET /v1/sandboxes` 与 template list API 保持一致，直接返回顶层数组；没有 sandbox 时返回 `[]`：
+
+```json
+[
+  {
+    "sandboxID":"sbx-xxxxxxxxxxxxxxxxxxxx",
+    "state":"running",
+    "runtimeType":"gvisor",
+    "rootfs":{
+      "provider":"overlaybd",
+      "image":"registry.example.com/team/ubuntu:overlaybd",
+      "digest":"sha256:...",
+      "snapshotKey":"novitabox-sandbox-sbx-xxxxxxxxxxxxxxxxxxxx"
+    }
+  }
+]
+```
+
+对于 OverlayBD sandbox，查询单个 sandbox 和列出 sandbox 都会直接返回原始 image 引用、解析后的 manifest digest，以及该 sandbox 的 writable snapshot key：
+
+```json
+{
+  "sandboxID":"sbx-xxxxxxxxxxxxxxxxxxxx",
+  "state":"running",
+  "runtimeType":"gvisor",
+  "rootfs":{
+    "provider":"overlaybd",
+    "image":"registry.example.com/team/ubuntu:overlaybd",
+    "digest":"sha256:...",
+    "snapshotKey":"novitabox-sandbox-sbx-xxxxxxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+原始 image 引用和 digest 会分别保存。image 解析或拉取完成后，不再使用 digest 覆盖用户提交的 image 引用。
 
 生命周期：
 
@@ -261,4 +314,3 @@ POST   /v2/templates/{template_id}/builds/{build_id}
 GET    /v2/templates/{template_id}/builds/{build_id}/status
 POST   /v3/templates
 ```
-
