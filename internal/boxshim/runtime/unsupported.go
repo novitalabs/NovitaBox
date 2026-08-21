@@ -51,3 +51,31 @@ func (d *UnsupportedDriver) Status(context.Context, string) (*novitaboxv1.Runtim
 func (d *UnsupportedDriver) Capabilities(context.Context, novitaboxv1.RuntimeType) (*novitaboxv1.RuntimeCapabilities, error) {
 	return nil, d.err
 }
+
+func (d *UnsupportedDriver) UpdateBalloon(context.Context, string, uint32) (*novitaboxv1.BalloonConfig, error) {
+	return nil, d.err
+}
+
+func (d *UnsupportedDriver) GetBalloon(context.Context, string) (*novitaboxv1.BalloonConfig, error) {
+	return nil, d.err
+}
+
+func (d *UnsupportedDriver) GetBalloonStats(context.Context, string) (*novitaboxv1.BalloonStats, error) {
+	return nil, d.err
+}
+
+func (d *UnsupportedDriver) UpdateBalloonStats(context.Context, string, uint32) (*novitaboxv1.BalloonConfig, error) {
+	return nil, d.err
+}
+
+func (d *UnsupportedDriver) StartBalloonHinting(context.Context, string, bool) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, d.err
+}
+
+func (d *UnsupportedDriver) StopBalloonHinting(context.Context, string) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, d.err
+}
+
+func (d *UnsupportedDriver) GetBalloonHinting(context.Context, string) (*novitaboxv1.BalloonHintingStatus, error) {
+	return nil, d.err
+}

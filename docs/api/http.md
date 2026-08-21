@@ -127,6 +127,44 @@ curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/pow
 curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/reboot
 ```
 
+## Firecracker Balloon
+
+Firecracker sandboxes create a balloon device with an initial target of `0 MiB`. Balloon statistics, `deflate_on_oom`, free-page hinting, and free-page reporting are enabled by default. The device is available for live memory reclamation without reducing guest memory at sandbox creation time. `amountMiB` is the target amount of memory to reclaim from the guest.
+
+Set and inspect the target:
+
+```bash
+curl -sS -X PATCH http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/balloon \
+  -H 'Content-Type: application/json' \
+  -d '{"amountMiB":1024}'
+
+curl -sS http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/balloon
+```
+
+Read balloon statistics and change the polling interval:
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/balloon/statistics
+
+curl -sS -X PATCH http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/balloon/statistics \
+  -H 'Content-Type: application/json' \
+  -d '{"statsPollingIntervalS":1}'
+```
+
+Start, inspect, and stop free-page hinting:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/balloon/hinting/start \
+  -H 'Content-Type: application/json' \
+  -d '{"acknowledgeOnStop":true}'
+curl -sS http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/balloon/hinting
+curl -sS -X POST http://127.0.0.1:8080/v1/sandboxes/sbx-xxxxxxxxxxxxxxxxxxxx/balloon/hinting/stop
+```
+
+Hinting is a one-shot run, not a periodic task. Its status exposes Firecracker's `hostCmd` and optional `guestCmd`; command `0` is stopped, `1` is completed, and values greater than `1` identify a hinting run.
+
+Balloon endpoints return an unsupported/conflict response for gVisor and other runtimes. The guest kernel must include the virtio-balloon driver for reclamation, statistics, and free-page reporting to have an effect. Statistics include swap, fault, free/available memory, cache, HugeTLB, OOM, allocation stall, scan, and reclaim counters when the guest kernel exposes them.
+
 Delete:
 
 ```bash
@@ -201,6 +239,13 @@ DELETE /v1/templates/{template_id}
 POST   /v1/sandboxes/{sandbox_id}/poweroff
 POST   /v1/sandboxes/{sandbox_id}/poweron
 POST   /v1/sandboxes/{sandbox_id}/reboot
+GET    /v1/sandboxes/{sandbox_id}/balloon
+PATCH  /v1/sandboxes/{sandbox_id}/balloon
+GET    /v1/sandboxes/{sandbox_id}/balloon/statistics
+PATCH  /v1/sandboxes/{sandbox_id}/balloon/statistics
+GET    /v1/sandboxes/{sandbox_id}/balloon/hinting
+POST   /v1/sandboxes/{sandbox_id}/balloon/hinting/start
+POST   /v1/sandboxes/{sandbox_id}/balloon/hinting/stop
 
 POST   /v1/templates/convert
 

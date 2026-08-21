@@ -137,7 +137,76 @@ func newSandboxCommand(apiAddr *string, proxyAddr *string) *cobra.Command {
 
 	cmd.AddCommand(newSandboxExecCommand(proxyAddr))
 	cmd.AddCommand(newShellCommand(proxyAddr))
+	cmd.AddCommand(newSandboxBalloonCommand(apiAddr))
 
+	return cmd
+}
+
+func newSandboxBalloonCommand(apiAddr *string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "balloon",
+		Short: "Manage Firecracker balloon memory",
+	}
+
+	var amountMiB uint32
+	setCmd := &cobra.Command{
+		Use:   "set <sandbox_id>",
+		Short: "Set the Firecracker balloon target in MiB",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return requestAndPrint(*apiAddr, http.MethodPatch, fmt.Sprintf("/v1/sandboxes/%s/balloon", url.PathEscape(args[0])), map[string]any{"amountMiB": amountMiB})
+		},
+	}
+	setCmd.Flags().Uint32Var(&amountMiB, "amount-mib", 0, "balloon target in MiB")
+
+	var interval uint32
+	statsCmd := &cobra.Command{
+		Use:   "stats <sandbox_id>",
+		Short: "Get Firecracker balloon statistics",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return requestAndPrint(*apiAddr, http.MethodGet, fmt.Sprintf("/v1/sandboxes/%s/balloon/statistics", url.PathEscape(args[0])), nil)
+		},
+	}
+
+	statsIntervalCmd := &cobra.Command{
+		Use:   "stats-interval <sandbox_id>",
+		Short: "Set Firecracker balloon statistics polling interval",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return requestAndPrint(*apiAddr, http.MethodPatch, fmt.Sprintf("/v1/sandboxes/%s/balloon/statistics", url.PathEscape(args[0])), map[string]any{"statsPollingIntervalS": interval})
+		},
+	}
+	statsIntervalCmd.Flags().Uint32Var(&interval, "interval-s", 1, "statistics polling interval in seconds")
+
+	hintingCmd := &cobra.Command{
+		Use:   "hinting",
+		Short: "Manage Firecracker free-page hinting",
+	}
+	var acknowledgeOnStop bool
+	hintingCmd.AddCommand(&cobra.Command{
+		Use:   "get <sandbox_id>",
+		Short: "Get free-page hinting status",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return requestAndPrint(*apiAddr, http.MethodGet, fmt.Sprintf("/v1/sandboxes/%s/balloon/hinting", url.PathEscape(args[0])), nil)
+		},
+	})
+	startHintingCmd := &cobra.Command{
+		Use:   "start <sandbox_id>",
+		Short: "Start free-page hinting",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return requestAndPrint(*apiAddr, http.MethodPost, fmt.Sprintf("/v1/sandboxes/%s/balloon/hinting/start", url.PathEscape(args[0])), map[string]any{"acknowledgeOnStop": acknowledgeOnStop})
+		},
+	}
+	startHintingCmd.Flags().BoolVar(&acknowledgeOnStop, "acknowledge-on-stop", true, "acknowledge completion after stopping the hinting run")
+	hintingCmd.AddCommand(startHintingCmd)
+	hintingCmd.AddCommand(simpleAPICommand(apiAddr, "stop <sandbox_id>", "Stop free-page hinting", http.MethodPost, "/v1/sandboxes/%s/balloon/hinting/stop", 1, map[string]any{}))
+
+	cmd.AddCommand(setCmd)
+	cmd.AddCommand(simpleAPICommand(apiAddr, "get <sandbox_id>", "Get Firecracker balloon configuration", http.MethodGet, "/v1/sandboxes/%s/balloon", 1, nil))
+	cmd.AddCommand(statsCmd, statsIntervalCmd, hintingCmd)
 	return cmd
 }
 

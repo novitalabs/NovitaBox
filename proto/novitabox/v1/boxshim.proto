@@ -17,6 +17,13 @@ service BoxShim {
   rpc RebootRuntime(RebootRuntimeRequest) returns (RuntimeInfo);
   rpc Status(StatusRequest) returns (RuntimeInfo);
   rpc Capabilities(CapabilitiesRequest) returns (RuntimeCapabilities);
+  rpc UpdateBalloon(UpdateBalloonRequest) returns (BalloonConfig);
+  rpc GetBalloon(GetBalloonRequest) returns (BalloonConfig);
+  rpc GetBalloonStats(GetBalloonStatsRequest) returns (BalloonStats);
+  rpc UpdateBalloonStats(UpdateBalloonStatsRequest) returns (BalloonConfig);
+  rpc StartBalloonHinting(StartBalloonHintingRequest) returns (BalloonHintingStatus);
+  rpc StopBalloonHinting(StopBalloonHintingRequest) returns (BalloonHintingStatus);
+  rpc GetBalloonHinting(GetBalloonHintingRequest) returns (BalloonHintingStatus);
 }
 
 message CreateRuntimeRequest {
@@ -55,4 +62,37 @@ message StatusRequest {
 
 message CapabilitiesRequest {
   RuntimeType runtime_type = 1;
+}
+
+message UpdateBalloonRequest {
+  string sandbox_id = 1;
+  uint32 amount_mib = 2;
+}
+
+message GetBalloonRequest {
+  string sandbox_id = 1;
+}
+
+message GetBalloonStatsRequest {
+  string sandbox_id = 1;
+}
+
+message UpdateBalloonStatsRequest {
+  string sandbox_id = 1;
+  uint32 stats_polling_interval_s = 2;
+}
+
+message StartBalloonHintingRequest {
+  string sandbox_id = 1;
+  reserved 2;
+  reserved "interval_s";
+  bool acknowledge_on_stop = 3;
+}
+
+message StopBalloonHintingRequest {
+  string sandbox_id = 1;
+}
+
+message GetBalloonHintingRequest {
+  string sandbox_id = 1;
 }

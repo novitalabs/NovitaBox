@@ -43,10 +43,12 @@ const (
 )
 
 type firecrackerLaunch struct {
-	cmd       *exec.Cmd
-	apiSocket string
-	logPath   string
-	jailer    *firecrackerJailerRuntime
+	cmd             *exec.Cmd
+	apiSocket       string
+	logPath         string
+	metricsHostPath string
+	metricsPath     string
+	jailer          *firecrackerJailerRuntime
 }
 
 type firecrackerJailerRuntime struct {
@@ -146,6 +148,12 @@ func (d *FirecrackerDriver) Create(ctx context.Context, spec *novitaboxv1.Runtim
 		if err := launch.jailer.prepareMounts(spec); err != nil {
 			return nil, err
 		}
+		if err := launch.jailer.ensureWritableByJailer(launch.metricsHostPath, false); err != nil {
+			return nil, fmt.Errorf("prepare firecracker metrics file permissions: %w", err)
+		}
+		if err := launch.jailer.bindFile(launch.metricsHostPath, launch.metricsPath); err != nil {
+			return nil, fmt.Errorf("bind firecracker metrics file: %w", err)
+		}
 	}
 
 	apiSocket, err := d.startFirecrackerLocked(launch)
@@ -160,7 +168,7 @@ func (d *FirecrackerDriver) Create(ctx context.Context, spec *novitaboxv1.Runtim
 		return nil, d.withLogTail(err)
 	}
 
-	if err := d.configureMachine(ctx, spec); err != nil {
+	if err := d.configureMachine(ctx, spec, launch.metricsPath); err != nil {
 		_ = d.killLocked()
 		return nil, d.withLogTail(err)
 	}
@@ -374,6 +382,12 @@ func (d *FirecrackerDriver) Resume(ctx context.Context, spec *novitaboxv1.Runtim
 		if err := launch.jailer.prepareMounts(spec); err != nil {
 			return nil, err
 		}
+		if err := launch.jailer.ensureWritableByJailer(launch.metricsHostPath, false); err != nil {
+			return nil, fmt.Errorf("prepare firecracker metrics file permissions: %w", err)
+		}
+		if err := launch.jailer.bindFile(launch.metricsHostPath, launch.metricsPath); err != nil {
+			return nil, fmt.Errorf("bind firecracker metrics file: %w", err)
+		}
 	}
 
 	apiSocket, err := d.startFirecrackerLocked(launch)
@@ -386,6 +400,10 @@ func (d *FirecrackerDriver) Resume(ctx context.Context, spec *novitaboxv1.Runtim
 	if err := d.waitForAPI(ctx, apiSocket); err != nil {
 		_ = d.killLocked()
 		return nil, d.withLogTail(err)
+	}
+	if err := d.client.PutMetrics(ctx, launch.metricsPath); err != nil {
+		_ = d.killLocked()
+		return nil, d.withLogTail(fmt.Errorf("configure firecracker metrics: %w", err))
 	}
 
 	req := firecrackerSnapshotLoadRequest{
@@ -512,14 +530,18 @@ func (d *FirecrackerDriver) Capabilities(context.Context, novitaboxv1.RuntimeTyp
 		Gpu:               false,
 		Vsock:             true,
 		TapNetwork:        true,
+		Balloon:           true,
 		GracefulShutdown:  true,
 		SerialConsole:     true,
 		Jailer:            true,
 	}, nil
 }
 
-func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitaboxv1.RuntimeSpec) error {
+func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitaboxv1.RuntimeSpec, metricsPath string) error {
 	spec = d.runtimeSpec(spec)
+	if err := d.client.PutMetrics(ctx, metricsPath); err != nil {
+		return fmt.Errorf("configure firecracker metrics: %w", err)
+	}
 	machine := spec.GetMachine()
 	vcpu := machine.GetVcpu()
 	if vcpu == 0 {
@@ -535,6 +557,17 @@ func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitabo
 		MemSizeMib: int64(memoryMB),
 	}); err != nil {
 		return fmt.Errorf("configure firecracker machine: %w", err)
+	}
+
+	balloon := effectiveBalloonSpec(spec.GetBalloon())
+	if err := d.client.PutBalloon(ctx, firecrackerBalloonConfig{
+		AmountMiB:             balloon.GetAmountMib(),
+		DeflateOnOOM:          balloon.GetDeflateOnOom(),
+		StatsPollingIntervalS: balloon.GetStatsPollingIntervalS(),
+		FreePageHinting:       balloon.GetFreePageHinting(),
+		FreePageReporting:     balloon.GetFreePageReporting(),
+	}); err != nil {
+		return fmt.Errorf("configure firecracker balloon: %w", err)
 	}
 
 	if err := d.client.PutBootSource(ctx, firecrackerBootSource{
@@ -586,6 +619,188 @@ func (d *FirecrackerDriver) configureMachine(ctx context.Context, spec *novitabo
 	return nil
 }
 
+func effectiveBalloonSpec(spec *novitaboxv1.BalloonSpec) *novitaboxv1.BalloonSpec {
+	if spec == nil {
+		spec = &novitaboxv1.BalloonSpec{}
+	}
+
+	// Keep all Firecracker balloon features enabled. The target amount remains
+	// caller-controlled, while the feature bits are creation-time capabilities.
+	cloned := *spec
+	cloned.DeflateOnOom = true
+	if cloned.StatsPollingIntervalS == 0 {
+		cloned.StatsPollingIntervalS = 1
+	}
+	cloned.FreePageHinting = true
+	cloned.FreePageReporting = true
+	return &cloned
+}
+
+func (d *FirecrackerDriver) UpdateBalloon(ctx context.Context, sandboxID string, amountMiB uint32) (*novitaboxv1.BalloonConfig, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if err := d.checkBalloonRuntimeLocked(sandboxID); err != nil {
+		return nil, err
+	}
+	if err := d.client.UpdateBalloon(ctx, amountMiB); err != nil {
+		return nil, d.withLogTail(fmt.Errorf("update firecracker balloon: %w", err))
+	}
+	return d.getBalloonLocked(ctx)
+}
+
+func (d *FirecrackerDriver) GetBalloon(ctx context.Context, sandboxID string) (*novitaboxv1.BalloonConfig, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if err := d.checkBalloonRuntimeLocked(sandboxID); err != nil {
+		return nil, err
+	}
+	return d.getBalloonLocked(ctx)
+}
+
+func (d *FirecrackerDriver) GetBalloonStats(ctx context.Context, sandboxID string) (*novitaboxv1.BalloonStats, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if err := d.checkBalloonRuntimeLocked(sandboxID); err != nil {
+		return nil, err
+	}
+	stats, err := d.client.GetBalloonStats(ctx)
+	if err != nil {
+		return nil, d.withLogTail(fmt.Errorf("get firecracker balloon statistics: %w", err))
+	}
+	return balloonStatsToProto(stats), nil
+}
+
+func (d *FirecrackerDriver) UpdateBalloonStats(ctx context.Context, sandboxID string, intervalSeconds uint32) (*novitaboxv1.BalloonConfig, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if err := d.checkBalloonRuntimeLocked(sandboxID); err != nil {
+		return nil, err
+	}
+	if err := d.client.UpdateBalloonStats(ctx, intervalSeconds); err != nil {
+		return nil, d.withLogTail(fmt.Errorf("update firecracker balloon statistics: %w", err))
+	}
+	return d.getBalloonLocked(ctx)
+}
+
+func (d *FirecrackerDriver) StartBalloonHinting(ctx context.Context, sandboxID string, acknowledgeOnStop bool) (*novitaboxv1.BalloonHintingStatus, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.checkBalloonRuntimeLocked(sandboxID); err != nil {
+		return nil, err
+	}
+	if err := d.client.StartBalloonHinting(ctx, acknowledgeOnStop); err != nil {
+		return nil, d.withLogTail(fmt.Errorf("start firecracker balloon hinting: %w", err))
+	}
+	return d.getBalloonHintingLocked(ctx)
+}
+
+func (d *FirecrackerDriver) StopBalloonHinting(ctx context.Context, sandboxID string) (*novitaboxv1.BalloonHintingStatus, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.checkBalloonRuntimeLocked(sandboxID); err != nil {
+		return nil, err
+	}
+	if err := d.client.StopBalloonHinting(ctx); err != nil {
+		return nil, d.withLogTail(fmt.Errorf("stop firecracker balloon hinting: %w", err))
+	}
+	return d.getBalloonHintingLocked(ctx)
+}
+
+func (d *FirecrackerDriver) GetBalloonHinting(ctx context.Context, sandboxID string) (*novitaboxv1.BalloonHintingStatus, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := d.checkBalloonRuntimeLocked(sandboxID); err != nil {
+		return nil, err
+	}
+	return d.getBalloonHintingLocked(ctx)
+}
+
+func (d *FirecrackerDriver) checkBalloonRuntimeLocked(sandboxID string) error {
+	if err := d.checkSandboxLocked(sandboxID); err != nil {
+		return err
+	}
+	if d.client == nil {
+		return errors.New("firecracker api client is not available")
+	}
+	if err := d.checkProcessAliveLocked(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *FirecrackerDriver) getBalloonLocked(ctx context.Context) (*novitaboxv1.BalloonConfig, error) {
+	config, err := d.client.GetBalloon(ctx)
+	if err != nil {
+		return nil, d.withLogTail(fmt.Errorf("get firecracker balloon: %w", err))
+	}
+	return balloonConfigToProto(config), nil
+}
+
+func (d *FirecrackerDriver) getBalloonHintingLocked(ctx context.Context) (*novitaboxv1.BalloonHintingStatus, error) {
+	status, err := d.client.GetBalloonHinting(ctx)
+	if err != nil {
+		return nil, d.withLogTail(fmt.Errorf("get firecracker balloon hinting: %w", err))
+	}
+	return &novitaboxv1.BalloonHintingStatus{
+		State:    balloonHintingState(status.HostCmd, status.GuestCmd),
+		HostCmd:  status.HostCmd,
+		GuestCmd: status.GuestCmd,
+	}, nil
+}
+
+func balloonHintingState(hostCmd uint32, guestCmd *uint32) string {
+	switch hostCmd {
+	case 0:
+		return "stopped"
+	case 1:
+		return "completed"
+	default:
+		if guestCmd != nil && *guestCmd == hostCmd {
+			return "running"
+		}
+		return "starting"
+	}
+}
+
+func balloonConfigToProto(config *firecrackerBalloonConfig) *novitaboxv1.BalloonConfig {
+	return &novitaboxv1.BalloonConfig{
+		AmountMib:             config.AmountMiB,
+		DeflateOnOom:          config.DeflateOnOOM,
+		StatsPollingIntervalS: config.StatsPollingIntervalS,
+		FreePageHinting:       config.FreePageHinting,
+		FreePageReporting:     config.FreePageReporting,
+	}
+}
+
+func balloonStatsToProto(stats *firecrackerBalloonStats) *novitaboxv1.BalloonStats {
+	return &novitaboxv1.BalloonStats{
+		TargetMib:          stats.TargetMiB,
+		ActualMib:          stats.ActualMiB,
+		SwapIn:             stats.SwapIn,
+		SwapOut:            stats.SwapOut,
+		MajorFaults:        stats.MajorFaults,
+		MinorFaults:        stats.MinorFaults,
+		FreeMemory:         stats.FreeMemory,
+		TotalMemory:        stats.TotalMemory,
+		AvailableMemory:    stats.AvailableMemory,
+		DiskCaches:         stats.DiskCaches,
+		HugetlbAllocations: stats.HugetlbAllocations,
+		HugetlbFailures:    stats.HugetlbFailures,
+		SharedMemory:       stats.SharedMemory,
+		UnevictableMemory:  stats.UnevictableMemory,
+		OomKill:            stats.OOMKill,
+		AllocStall:         stats.AllocStall,
+		AsyncScan:          stats.AsyncScan,
+		DirectScan:         stats.DirectScan,
+		AsyncReclaim:       stats.AsyncReclaim,
+		DirectReclaim:      stats.DirectReclaim,
+	}
+}
+
 func (d *FirecrackerDriver) startFirecrackerLocked(launch *firecrackerLaunch) (string, error) {
 	logPath := launch.logPath
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
@@ -619,6 +834,15 @@ func (d *FirecrackerDriver) startFirecrackerLocked(launch *firecrackerLaunch) (s
 }
 
 func (d *FirecrackerDriver) prepareFirecrackerLaunch(spec *novitaboxv1.RuntimeSpec, sandboxDir string) (*firecrackerLaunch, error) {
+	metricsHostPath := filepath.Join(sandboxDir, "firecracker-metrics.json")
+	metricsFile, err := os.OpenFile(metricsHostPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("create firecracker metrics file: %w", err)
+	}
+	if err := metricsFile.Close(); err != nil {
+		return nil, fmt.Errorf("close firecracker metrics file: %w", err)
+	}
+
 	jailerSpec, useJailer, err := d.effectiveJailerSpec(spec)
 	if err != nil {
 		return nil, err
@@ -629,9 +853,11 @@ func (d *FirecrackerDriver) prepareFirecrackerLaunch(spec *novitaboxv1.RuntimeSp
 			return nil, fmt.Errorf("remove stale firecracker api socket: %w", err)
 		}
 		return &firecrackerLaunch{
-			cmd:       firecrackerCommand(d.cfg.Firecracker.BinaryPath, apiSocket, spec.GetNetwork()),
-			apiSocket: apiSocket,
-			logPath:   filepath.Join(sandboxDir, "firecracker.log"),
+			cmd:             firecrackerCommand(d.cfg.Firecracker.BinaryPath, apiSocket, spec.GetNetwork()),
+			apiSocket:       apiSocket,
+			logPath:         filepath.Join(sandboxDir, "firecracker.log"),
+			metricsHostPath: metricsHostPath,
+			metricsPath:     metricsHostPath,
 		}, nil
 	}
 
@@ -665,10 +891,12 @@ func (d *FirecrackerDriver) prepareFirecrackerLaunch(spec *novitaboxv1.RuntimeSp
 	jailer.apiLink = apiSocket
 
 	return &firecrackerLaunch{
-		cmd:       firecrackerJailerNetworkCommand(d.cfg.Firecracker.BinaryPath, jailerSpec, spec.GetSandboxId(), jailerGuestAPISocket, spec.GetNetwork()),
-		apiSocket: apiSocket,
-		logPath:   filepath.Join(sandboxDir, "firecracker.log"),
-		jailer:    jailer,
+		cmd:             firecrackerJailerNetworkCommand(d.cfg.Firecracker.BinaryPath, jailerSpec, spec.GetSandboxId(), jailerGuestAPISocket, spec.GetNetwork()),
+		apiSocket:       apiSocket,
+		logPath:         filepath.Join(sandboxDir, "firecracker.log"),
+		metricsHostPath: metricsHostPath,
+		metricsPath:     "/metrics.json",
+		jailer:          jailer,
 	}, nil
 }
 

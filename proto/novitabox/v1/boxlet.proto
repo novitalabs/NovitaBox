@@ -17,6 +17,13 @@ service BoxletSandboxService {
   rpc RebootSandbox(RebootSandboxRequest) returns (SandboxInfo);
   rpc GetSandbox(GetSandboxRequest) returns (SandboxInfo);
   rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse);
+  rpc UpdateSandboxBalloon(UpdateSandboxBalloonRequest) returns (BalloonConfig);
+  rpc GetSandboxBalloon(GetSandboxBalloonRequest) returns (BalloonConfig);
+  rpc GetSandboxBalloonStats(GetSandboxBalloonStatsRequest) returns (BalloonStats);
+  rpc UpdateSandboxBalloonStats(UpdateSandboxBalloonStatsRequest) returns (BalloonConfig);
+  rpc StartSandboxBalloonHinting(StartSandboxBalloonHintingRequest) returns (BalloonHintingStatus);
+  rpc StopSandboxBalloonHinting(StopSandboxBalloonHintingRequest) returns (BalloonHintingStatus);
+  rpc GetSandboxBalloonHinting(GetSandboxBalloonHintingRequest) returns (BalloonHintingStatus);
 }
 
 service BoxletArtifactService {
@@ -83,6 +90,39 @@ message ListSandboxesRequest {
 
 message ListSandboxesResponse {
   repeated SandboxInfo sandboxes = 1;
+}
+
+message UpdateSandboxBalloonRequest {
+  string sandbox_id = 1;
+  uint32 amount_mib = 2;
+}
+
+message GetSandboxBalloonRequest {
+  string sandbox_id = 1;
+}
+
+message GetSandboxBalloonStatsRequest {
+  string sandbox_id = 1;
+}
+
+message UpdateSandboxBalloonStatsRequest {
+  string sandbox_id = 1;
+  uint32 stats_polling_interval_s = 2;
+}
+
+message StartSandboxBalloonHintingRequest {
+  string sandbox_id = 1;
+  reserved 2;
+  reserved "interval_s";
+  bool acknowledge_on_stop = 3;
+}
+
+message StopSandboxBalloonHintingRequest {
+  string sandbox_id = 1;
+}
+
+message GetSandboxBalloonHintingRequest {
+  string sandbox_id = 1;
 }
 
 message CreateTemplateRequest {

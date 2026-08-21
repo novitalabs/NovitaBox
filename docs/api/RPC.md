@@ -15,6 +15,13 @@ service BoxletSandboxService {
 
   rpc GetSandbox(GetSandboxRequest) returns (SandboxInfo);
   rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse);
+  rpc UpdateSandboxBalloon(UpdateSandboxBalloonRequest) returns (BalloonConfig);
+  rpc GetSandboxBalloon(GetSandboxBalloonRequest) returns (BalloonConfig);
+  rpc GetSandboxBalloonStats(GetSandboxBalloonStatsRequest) returns (BalloonStats);
+  rpc UpdateSandboxBalloonStats(UpdateSandboxBalloonStatsRequest) returns (BalloonConfig);
+  rpc StartSandboxBalloonHinting(StartSandboxBalloonHintingRequest) returns (BalloonHintingStatus);
+  rpc StopSandboxBalloonHinting(StopSandboxBalloonHintingRequest) returns (BalloonHintingStatus);
+  rpc GetSandboxBalloonHinting(GetSandboxBalloonHintingRequest) returns (BalloonHintingStatus);
 }
 ```
 
@@ -65,5 +72,12 @@ service BoxShim {
 
   rpc Status(StatusRequest) returns (RuntimeInfo);
   rpc Capabilities(CapabilitiesRequest) returns (RuntimeCapabilities);
+  rpc UpdateBalloon(UpdateBalloonRequest) returns (BalloonConfig);
+  rpc GetBalloon(GetBalloonRequest) returns (BalloonConfig);
+  rpc GetBalloonStats(GetBalloonStatsRequest) returns (BalloonStats);
+  rpc UpdateBalloonStats(UpdateBalloonStatsRequest) returns (BalloonConfig);
+  rpc StartBalloonHinting(StartBalloonHintingRequest) returns (BalloonHintingStatus);
+  rpc StopBalloonHinting(StopBalloonHintingRequest) returns (BalloonHintingStatus);
+  rpc GetBalloonHinting(GetBalloonHintingRequest) returns (BalloonHintingStatus);
 }
 ```

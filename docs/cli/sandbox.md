@@ -143,6 +143,35 @@ Reboot:
 boxctl sandbox reboot sbx-xxxxxxxxxxxxxxxxxxxx
 ```
 
+## Balloon
+
+Firecracker sandboxes expose a balloon device with an initial target of `0 MiB`. Balloon statistics, deflate-on-OOM, free-page hinting, and free-page reporting are enabled by default. Set the target to reclaim guest memory, or set it back to zero to deflate the balloon:
+
+```bash
+boxctl sandbox balloon set sbx-xxxxxxxxxxxxxxxxxxxx --amount-mib 1024
+boxctl sandbox balloon get sbx-xxxxxxxxxxxxxxxxxxxx
+boxctl sandbox balloon set sbx-xxxxxxxxxxxxxxxxxxxx --amount-mib 0
+```
+
+Inspect statistics and configure their polling interval:
+
+```bash
+boxctl sandbox balloon stats sbx-xxxxxxxxxxxxxxxxxxxx
+boxctl sandbox balloon stats-interval sbx-xxxxxxxxxxxxxxxxxxxx --interval-s 1
+```
+
+Manage free-page hinting:
+
+```bash
+boxctl sandbox balloon hinting start sbx-xxxxxxxxxxxxxxxxxxxx
+boxctl sandbox balloon hinting get sbx-xxxxxxxxxxxxxxxxxxxx
+boxctl sandbox balloon hinting stop sbx-xxxxxxxxxxxxxxxxxxxx
+```
+
+Hinting is a one-shot run. Use `--acknowledge-on-stop=false` only when the caller needs to control completion acknowledgement explicitly.
+
+Balloon is supported by the Firecracker runtime. The guest kernel must include virtio-balloon support; the API can configure the device even when the guest does not currently report reclaimable pages.
+
 Hidden compatibility aliases are available:
 
 ```bash
