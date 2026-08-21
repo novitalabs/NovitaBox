@@ -49,9 +49,11 @@ The same code runs in Novita production with your production API key and endpoin
 Runtime selection and GPU allocation are NovitaBox local control-plane options. Create those templates and sandboxes with `boxctl` or the native HTTP API, then use the SDK against the resulting template or sandbox:
 
 ```bash
-/data/novitabox/boxctl template build cuda-template --runtime gvisor --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+/data/novitabox/boxctl template build cuda-template --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
 /data/novitabox/boxctl sandbox create --template tpl-xxxxxxxxxxxxxxxxxxxx --runtime gvisor --gpu 1
 ```
+
+The first command creates a Firecracker template because the current `boxctl template build` command has no runtime flag. For a gVisor template, use `POST /v3/templates` with `runtimeType: "gvisor"`, then start the returned v2 build. The sandbox command above shows the valid runtime selection flag for sandbox creation.
 
 ## Verify with boxctl
 

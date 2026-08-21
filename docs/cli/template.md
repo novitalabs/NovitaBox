@@ -19,7 +19,8 @@ Options:
 - `--template <template_id>`: choose a template id.
 - `--cpu <count>`: template CPU count.
 - `--memory <mb>`: template memory in MB.
-- `--runtime <runtime_type>`: runtime type for the template. Supported values include `firecracker` and `gvisor`.
+
+The current `boxctl template create` command does not expose a `--runtime` flag. It creates a template with the API default runtime, currently Firecracker. To create a gVisor template, create the template through `POST /v3/templates` with `{"runtimeType":"gvisor"}`, then start the build through the v2 build endpoint. See [HTTP API](../api/http.md).
 
 ## Build
 
@@ -48,7 +49,6 @@ Other options:
 - `--template <template_id>`: choose a template id.
 - `--cpu <count>`: template CPU count.
 - `--memory <mb>`: template memory in MB.
-- `--runtime <runtime_type>`: choose the runtime for the template.
 
 Examples:
 
@@ -60,13 +60,7 @@ boxctl template build python-template \
   --exec 'python3 --version'
 ```
 
-Build a gVisor template:
-
-```bash
-boxctl template build cuda-template \
-  --runtime gvisor \
-  --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
-```
+To build a gVisor template, first create it with `runtimeType: "gvisor"` through the HTTP API, then call the returned v2 build endpoint. `boxctl template build` currently defaults to the API's Firecracker runtime because it has no runtime flag.
 
 Runtime notes:
 

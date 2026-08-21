@@ -16,6 +16,15 @@ Extended maintenance operations:
 - poweron
 - reboot
 
+Firecracker balloon operations are online maintenance operations while the runtime is running:
+
+- update the balloon target without restarting the VM
+- read balloon statistics
+- change the statistics polling interval
+- start, inspect, and stop one-shot free-page hinting
+
+Balloon operations do not create a new sandbox lifecycle state. They fail if the Firecracker API socket or runtime process is unavailable, and they are not supported by gVisor.
+
 Lifecycle state machine:
 
 ```text

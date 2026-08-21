@@ -36,7 +36,7 @@ Build steps:
 - `--exec` splits the value by whitespace and executes it directly; it can be repeated.
 - `--start-cmd` and `--ready-cmd` are passed as template lifecycle commands.
 - `--template` can be used to choose a template id; otherwise one is generated.
-- `--runtime gvisor` builds a directory-rootfs gVisor template instead of a Firecracker snapshot template.
+- `boxctl template build` currently has no `--runtime` flag. It uses the API default, Firecracker. To build a gVisor directory-rootfs template, create the template through `POST /v3/templates` with `runtimeType: "gvisor"`, then call the returned v2 build endpoint. See [HTTP API](../api/http.md).
 
 Example:
 
@@ -50,12 +50,21 @@ Example:
 
 The response includes `templateID` and `buildID`. Save the `templateID` for sandbox creation.
 
-Build a gVisor template from an NVIDIA CUDA sample image:
+Build a gVisor template from an NVIDIA CUDA sample image by creating a gVisor template record first:
 
 ```bash
-/data/novitabox/boxctl template build cuda-template \
-  --runtime gvisor \
-  --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+curl -sS -X POST http://127.0.0.1:8080/v3/templates \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"cuda-template","runtimeType":"gvisor"}'
+```
+
+Use the returned `templateID` and `buildID` with:
+
+```bash
+curl -sS -X POST \
+  http://127.0.0.1:8080/v2/templates/<templateID>/builds/<buildID> \
+  -H 'Content-Type: application/json' \
+  -d '{"fromImage":"nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8"}'
 ```
 
 ## List and Inspect Templates
@@ -152,6 +161,33 @@ The sandbox subcommand exposes the same exec flow:
 /data/novitabox/boxctl sandbox rm sbx-xxxxxxxxxxxxxxxxxxxx
 /data/novitabox/boxctl sandbox kill sbx-xxxxxxxxxxxxxxxxxxxx
 ```
+
+## Firecracker Balloon
+
+Firecracker sandboxes create a virtio-balloon device with a target of `0 MiB`. The target can be changed without restarting the sandbox:
+
+```bash
+/data/novitabox/boxctl sandbox balloon set sbx-xxxxxxxxxxxxxxxxxxxx --amount-mib 1024
+/data/novitabox/boxctl sandbox balloon get sbx-xxxxxxxxxxxxxxxxxxxx
+/data/novitabox/boxctl sandbox balloon set sbx-xxxxxxxxxxxxxxxxxxxx --amount-mib 0
+```
+
+Read statistics and configure the polling interval:
+
+```bash
+/data/novitabox/boxctl sandbox balloon stats sbx-xxxxxxxxxxxxxxxxxxxx
+/data/novitabox/boxctl sandbox balloon stats-interval sbx-xxxxxxxxxxxxxxxxxxxx --interval-s 2
+```
+
+Manage one-shot free-page hinting:
+
+```bash
+/data/novitabox/boxctl sandbox balloon hinting start sbx-xxxxxxxxxxxxxxxxxxxx
+/data/novitabox/boxctl sandbox balloon hinting get sbx-xxxxxxxxxxxxxxxxxxxx
+/data/novitabox/boxctl sandbox balloon hinting stop sbx-xxxxxxxxxxxxxxxxxxxx
+```
+
+Balloon is Firecracker-only and requires a guest kernel with virtio-balloon support. gVisor returns an unsupported-runtime error.
 
 ## Images
 

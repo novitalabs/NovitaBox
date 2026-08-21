@@ -67,7 +67,7 @@ novita-sandbox-cli sbx kill sbx-xxxxxxxxxxxxxxxxxxxx
 ```
 
 When debugging NovitaBox itself, prefer `boxctl` because it exposes local-only commands and can directly select `--api` and `--proxy`.
- 
+
 ```bash
 /data/novitabox/boxctl sandbox list
 /data/novitabox/boxctl exec -it sbx-xxxxxxxxxxxxxxxxxxxx /bin/sh
@@ -76,6 +76,8 @@ When debugging NovitaBox itself, prefer `boxctl` because it exposes local-only c
 Runtime selection and GPU requests are local NovitaBox features exposed by `boxctl` and the native HTTP API:
 
 ```bash
-/data/novitabox/boxctl template build cuda-template --runtime gvisor --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+/data/novitabox/boxctl template build cuda-template --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
 /data/novitabox/boxctl sandbox create --template tpl-xxxxxxxxxxxxxxxxxxxx --runtime gvisor --gpu 1
 ```
+
+`boxctl template build` currently uses the API default runtime, Firecracker. To create a gVisor template, use the native template API with `runtimeType: "gvisor"` before starting the build.

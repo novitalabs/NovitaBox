@@ -34,6 +34,7 @@ Responsibilities:
 
 - parent process of the runtime
 - start, stop, pause, resume, reboot, and kill runtime
+- expose Firecracker balloon configuration, statistics, and free-page hinting
 - expose status and capability RPC
 - survive NovitaBox restart
 - isolate runtime-specific details behind runtime drivers

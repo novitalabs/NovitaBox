@@ -42,13 +42,13 @@ Install the latest release components without building from source:
 **Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=v0.0.2 sudo -E bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=<release-version> sudo -E bash
 ```
 
 **macOS with Lima**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=v0.0.2 bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=<release-version> bash
 ```
 
 The release installer detects your operating system and CPU architecture, downloads the matching prebuilt components,
@@ -61,7 +61,7 @@ Linux installs configure local DNS and HTTPS proxy by default. On macOS, enable 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | \
-  RELEASE_VERSION=v0.0.2 ENABLE_MAC_DNS=1 ENABLE_MAC_PROXY=1 bash
+  RELEASE_VERSION=<release-version> ENABLE_MAC_DNS=1 ENABLE_MAC_PROXY=1 bash
 ```
 
 After installation:
@@ -175,12 +175,12 @@ sudo systemctl restart caddy
 Build a gVisor template:
 
 ```bash
-/data/novitabox/boxctl \
-  --api http://127.0.0.1:8080 \
-  template build cuda-template \
-  --runtime gvisor \
-  --from-image nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
+curl -sS -X POST http://127.0.0.1:8080/v3/templates \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"cuda-template","runtimeType":"gvisor"}'
 ```
+
+Use the returned `templateID` and `buildID` with the v2 template build endpoint. The current `boxctl template build` command has no `--runtime` flag and therefore uses the API default, Firecracker.
 
 #### Launch a sandbox
 
@@ -331,8 +331,8 @@ belongs to a running sandbox.
 - **API:** [HTTP API](docs/api/http.md), [Internal RPC](docs/api/RPC.md)
 - **Architecture:** [Overview](docs/architecture/overview.md), [Components](docs/architecture/components.md), [RuntimeSpec](docs/architecture/runtime.md), [Artifact Model](docs/architecture/artifact.md), [Network](docs/architecture/network.md), [Sandbox Lifecycle](docs/architecture/lifecycle.md), [File Layout](docs/architecture/file-layout.md), [Security Model](docs/architecture/security.md)
 - **CLI reference:** [Template](docs/cli/template.md), [Sandbox](docs/cli/sandbox.md), [Image](docs/cli/image.md), [Runtime and snapshot](docs/cli/others.md)
-- **Changelog:** [v0.0.3](docs/changelog/v0.0.3.md), [v0.0.1](docs/changelog/v0.0.1.md)
-- **Chinese docs:** [使用手册](docs/zh/usage.md), [Architecture overview](docs/zh/architecture/overview.md), [v0.0.3 changelog](docs/zh/changelog/v0.0.3.md), [v0.0.1 changelog](docs/zh/changelog/v0.0.1.md)
+- **Changelog:** [Unreleased](docs/changelog/unreleased.md), [v0.0.3](docs/changelog/v0.0.3.md), [v0.0.1](docs/changelog/v0.0.1.md)
+- **Chinese docs:** [文档首页](docs/zh/README.md), [使用手册](docs/zh/usage.md), [HTTP API](docs/zh/api/http.md), [CLI](docs/zh/cli/README.md), [架构概览](docs/zh/architecture/overview.md), [故障排查](docs/zh/troubleshooting.md), [未发布变更](docs/zh/changelog/unreleased.md)
 
 ---
 

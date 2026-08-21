@@ -55,7 +55,7 @@ service BoxletNodeService {
 }
 ```
 
-`ListRuntimes` and `GetRuntimeCapabilities` report Firecracker, gVisor, and Cloud Hypervisor capabilities. Clients should check capabilities before assuming pause/resume, snapshot, GPU, or networking behavior.
+`ListRuntimes` and `GetRuntimeCapabilities` report Firecracker, gVisor, and Cloud Hypervisor capabilities. Clients should check capabilities before assuming pause/resume, snapshot, GPU, networking, or balloon behavior. The Firecracker boxshim supports balloon operations; the boxlet's static capability response still needs to synchronize the `balloon` field.
 
 ### BoxShim Service
 

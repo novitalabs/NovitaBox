@@ -9,7 +9,7 @@ The release installer downloads prebuilt NovitaBox components for the current op
 ### Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=v0.0.2 sudo -E bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=<release-version> sudo -E bash
 ```
 
 Linux defaults:
@@ -26,7 +26,7 @@ ENABLE_CADDY=1
 ### macOS with Lima
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=v0.0.2 bash
+curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | RELEASE_VERSION=<release-version> bash
 ```
 
 On macOS, the installer downloads:
@@ -40,7 +40,7 @@ Homebrew and Lima are installed automatically when missing. macOS host DNS and p
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/novitalabs/NovitaBox/main/scripts/install-release.sh | \
-  RELEASE_VERSION=v0.0.2 ENABLE_MAC_DNS=1 ENABLE_MAC_PROXY=1 bash
+  RELEASE_VERSION=<release-version> ENABLE_MAC_DNS=1 ENABLE_MAC_PROXY=1 bash
 ```
 
 ### Runtime Assets
@@ -54,7 +54,7 @@ RUNTIME_ASSET_VERSION=v0.0.1
 Override only when publishing new runtime assets:
 
 ```bash
-RELEASE_VERSION=v0.0.2 RUNTIME_ASSET_VERSION=v0.0.3 scripts/install-release.sh
+RELEASE_VERSION=<release-version> RUNTIME_ASSET_VERSION=<runtime-asset-version> scripts/install-release.sh
 ```
 
 gVisor support requires a `runsc` binary. The release installer can download it from the release assets when
