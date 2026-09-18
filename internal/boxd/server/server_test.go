@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"io"
@@ -104,6 +105,85 @@ func TestConnectRPCProtoStartStreamsProcessEvents(t *testing.T) {
 	if len(first) == 0 {
 		t.Fatalf("first proto frame is empty")
 	}
+}
+
+func TestConnectRPCStartStreamsNonPTYStdoutAndStderr(t *testing.T) {
+	cfg := config.Default()
+	s := New(cfg, log.NewNop())
+
+	body := `{"process":{"cmd":"/bin/sh","args":["-c","printf OUT; printf ERR >&2"]}}`
+	req := httptest.NewRequest(http.MethodPost, "/process.Process/Start", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/connect+json")
+	rec := httptest.NewRecorder()
+	s.httpServer.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var stdout, stderr string
+	for {
+		frame := readConnectJSONFrame(t, rec.Body)
+		var response connectStreamResponse
+		if err := json.Unmarshal(frame, &response); err != nil {
+			t.Fatalf("decode stream frame: %v", err)
+		}
+		if response.Event.Data != nil {
+			if response.Event.Data.PTY != "" {
+				t.Fatalf("non-PTY output was sent in pty field: %#v", response.Event.Data)
+			}
+			if response.Event.Data.Stdout != "" {
+				stdout += decodeBase64Test(t, response.Event.Data.Stdout)
+			}
+			if response.Event.Data.Stderr != "" {
+				stderr += decodeBase64Test(t, response.Event.Data.Stderr)
+			}
+		}
+		if response.Event.End != nil {
+			break
+		}
+	}
+
+	if stdout != "OUT" {
+		t.Fatalf("stdout = %q, want %q", stdout, "OUT")
+	}
+	if stderr != "ERR" {
+		t.Fatalf("stderr = %q, want %q", stderr, "ERR")
+	}
+}
+
+func TestOutputHubReplaysOutputPublishedBeforeSubscribe(t *testing.T) {
+	hub := newOutputHub()
+	hub.publish(processOutput{stream: processOutputPTY, data: []byte("hello\n")})
+	hub.publish(processOutput{stream: processOutputPTY, data: []byte("/\n")})
+	hub.publish(processOutput{stream: processOutputPTY, data: []byte("uid=0(root)\n")})
+	hub.close()
+
+	output, cancel := hub.subscribe()
+	defer cancel()
+
+	var got []string
+	for payload := range output {
+		got = append(got, string(payload.data))
+	}
+	want := []string{"hello\n", "/\n", "uid=0(root)\n"}
+	if len(got) != len(want) {
+		t.Fatalf("replayed output = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("replayed output = %#v, want %#v", got, want)
+		}
+	}
+}
+
+func decodeBase64Test(t *testing.T, value string) string {
+	t.Helper()
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		t.Fatalf("decode base64 output: %v", err)
+	}
+	return string(decoded)
 }
 
 func TestConnectRPCSendSignal(t *testing.T) {

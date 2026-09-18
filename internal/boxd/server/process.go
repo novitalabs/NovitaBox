@@ -92,6 +92,8 @@ type managedProcess struct {
 	Started  time.Time
 	cmd      *exec.Cmd
 	terminal processTerminal
+	stdin    io.WriteCloser
+	outputs  []processOutputReader
 	manager  *processManager
 
 	mu       sync.RWMutex
@@ -105,6 +107,24 @@ type processTerminal interface {
 	io.Reader
 	io.Writer
 	io.Closer
+}
+
+type processOutputStream uint8
+
+const (
+	processOutputPTY processOutputStream = iota
+	processOutputStdout
+	processOutputStderr
+)
+
+type processOutput struct {
+	stream processOutputStream
+	data   []byte
+}
+
+type processOutputReader struct {
+	stream processOutputStream
+	reader io.ReadCloser
 }
 
 type processExit struct {
@@ -127,23 +147,31 @@ type processInfo struct {
 }
 
 type outputHub struct {
-	mu     sync.RWMutex
-	closed bool
-	subs   map[chan []byte]struct{}
+	mu      sync.RWMutex
+	closed  bool
+	pending []processOutput
+	subs    map[chan processOutput]struct{}
 }
 
 func newOutputHub() *outputHub {
-	return &outputHub{subs: make(map[chan []byte]struct{})}
+	return &outputHub{subs: make(map[chan processOutput]struct{})}
 }
 
-func (h *outputHub) publish(data []byte) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+func (h *outputHub) publish(output processOutput) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if h.closed {
 		return
 	}
+	if len(h.subs) == 0 {
+		h.pending = append(h.pending, cloneProcessOutput(output))
+		if len(h.pending) > processOutputBuffer {
+			h.pending = h.pending[len(h.pending)-processOutputBuffer:]
+		}
+		return
+	}
 	for sub := range h.subs {
-		payload := append([]byte(nil), data...)
+		payload := cloneProcessOutput(output)
 		select {
 		case sub <- payload:
 		default:
@@ -151,10 +179,18 @@ func (h *outputHub) publish(data []byte) {
 	}
 }
 
-func (h *outputHub) subscribe() (chan []byte, func()) {
+func (h *outputHub) subscribe() (chan processOutput, func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	ch := make(chan []byte, processOutputBuffer)
+	bufferSize := processOutputBuffer
+	if len(h.pending) > bufferSize {
+		bufferSize = len(h.pending)
+	}
+	ch := make(chan processOutput, bufferSize)
+	for _, payload := range h.pending {
+		ch <- cloneProcessOutput(payload)
+	}
+	h.pending = nil
 	if h.closed {
 		close(ch)
 		return ch, func() {}
@@ -167,6 +203,13 @@ func (h *outputHub) subscribe() (chan []byte, func()) {
 			delete(h.subs, ch)
 			close(ch)
 		}
+	}
+}
+
+func cloneProcessOutput(output processOutput) processOutput {
+	return processOutput{
+		stream: output.stream,
+		data:   append([]byte(nil), output.data...),
 	}
 }
 
@@ -367,6 +410,7 @@ func (s *Server) handleStartProcess(w http.ResponseWriter, r *http.Request) {
 		Started:  time.Now().UTC(),
 		cmd:      cmd,
 		terminal: terminal,
+		outputs:  []processOutputReader{{stream: processOutputPTY, reader: terminal}},
 		manager:  s.processes,
 		done:     make(chan struct{}),
 		output:   newOutputHub(),
@@ -406,8 +450,23 @@ func (s *Server) handleConnectStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, cols := connectPTYSizeValue(req.PTY, 24, 80)
-	cmd, terminal, err := startPTYProcess(req.Process.Cmd, req.Process.Args, connectString(req.Process.Cwd), connectEnv(req.Process.Envs), cols, rows)
+	var (
+		cmd      *exec.Cmd
+		terminal processTerminal
+		stdin    io.WriteCloser
+		outputs  []processOutputReader
+		err      error
+	)
+	if req.PTY != nil {
+		rows, cols := connectPTYSizeValue(req.PTY, 24, 80)
+		cmd, terminal, err = startPTYProcess(req.Process.Cmd, req.Process.Args, connectString(req.Process.Cwd), connectEnv(req.Process.Envs), cols, rows)
+		if err == nil {
+			outputs = []processOutputReader{{stream: processOutputPTY, reader: terminal}}
+		}
+	} else {
+		stdinEnabled := req.Stdin != nil && *req.Stdin
+		cmd, stdin, outputs, err = startPipeProcess(req.Process.Cmd, req.Process.Args, connectString(req.Process.Cwd), connectEnv(req.Process.Envs), stdinEnabled)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -415,7 +474,12 @@ func (s *Server) handleConnectStart(w http.ResponseWriter, r *http.Request) {
 
 	id, err := newProcessID()
 	if err != nil {
-		_ = terminal.Close()
+		if terminal != nil {
+			_ = terminal.Close()
+		}
+		if stdin != nil {
+			_ = stdin.Close()
+		}
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
@@ -427,17 +491,20 @@ func (s *Server) handleConnectStart(w http.ResponseWriter, r *http.Request) {
 		Tag:      connectString(req.Tag),
 		Cmd:      append([]string{req.Process.Cmd}, req.Process.Args...),
 		Cwd:      connectString(req.Process.Cwd),
-		TTY:      true,
+		TTY:      req.PTY != nil,
 		Started:  time.Now().UTC(),
 		cmd:      cmd,
 		terminal: terminal,
+		stdin:    stdin,
+		outputs:  outputs,
 		manager:  s.processes,
 		done:     make(chan struct{}),
 		output:   newOutputHub(),
 	}
 	s.processes.add(proc)
+	output, cancel := proc.output.subscribe()
 	proc.start()
-	s.streamConnectProcess(w, r, codec, proc)
+	s.streamConnectProcessWithOutput(w, r, codec, proc, output, cancel)
 }
 
 func (s *Server) handleConnectAttach(w http.ResponseWriter, r *http.Request) {
@@ -511,7 +578,7 @@ func (s *Server) handleConnectSendInput(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if len(payload) > 0 {
-		if _, err := proc.terminal.Write(payload); err != nil {
+		if err := proc.writeInput(payload); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -613,7 +680,7 @@ func (s *Server) handleProcessConnect(ws *websocket.Conn) {
 		errCh <- proc.copyWebSocketInput(ws)
 	}()
 	go func() {
-		errCh <- copyProcessOutput(ws, output, proc.done, proc)
+		errCh <- copyProcessOutput(ws, output, proc)
 	}()
 
 	if err := <-errCh; err != nil && !errors.Is(err, io.EOF) {
@@ -691,18 +758,27 @@ func (s *Server) handleWaitProcess(w http.ResponseWriter, r *http.Request, proc 
 }
 
 func (p *managedProcess) start() {
-	go func() {
-		buf := make([]byte, 32*1024)
-		for {
-			n, err := p.terminal.Read(buf)
-			if n > 0 {
-				p.output.publish(buf[:n])
+	var outputWG sync.WaitGroup
+	for _, output := range p.outputs {
+		output := output
+		outputWG.Add(1)
+		go func() {
+			defer outputWG.Done()
+			buf := make([]byte, 32*1024)
+			for {
+				n, err := output.reader.Read(buf)
+				if n > 0 {
+					p.output.publish(processOutput{
+						stream: output.stream,
+						data:   buf[:n],
+					})
+				}
+				if err != nil {
+					return
+				}
 			}
-			if err != nil {
-				return
-			}
-		}
-	}()
+		}()
+	}
 
 	go func() {
 		err := p.cmd.Wait()
@@ -718,13 +794,31 @@ func (p *managedProcess) start() {
 		p.mu.Lock()
 		p.exit = &exit
 		p.mu.Unlock()
-		_ = p.terminal.Close()
+		if p.terminal != nil {
+			_ = p.terminal.Close()
+		}
+		if p.stdin != nil {
+			_ = p.stdin.Close()
+		}
+		outputWG.Wait()
 		p.output.close()
 		close(p.done)
 		time.AfterFunc(5*time.Minute, func() {
 			p.manager.remove(p.ID)
 		})
 	}()
+}
+
+func (p *managedProcess) writeInput(payload []byte) error {
+	writer := p.stdin
+	if writer == nil {
+		writer = p.terminal
+	}
+	if writer == nil {
+		return errors.New("process stdin is not enabled")
+	}
+	_, err := writer.Write(payload)
+	return err
 }
 
 func (p *managedProcess) copyWebSocketInput(ws *websocket.Conn) error {
@@ -739,7 +833,7 @@ func (p *managedProcess) copyWebSocketInput(ws *websocket.Conn) error {
 		if len(payload) == 0 {
 			continue
 		}
-		if _, err := p.terminal.Write(payload); err != nil {
+		if err := p.writeInput(payload); err != nil {
 			if wsutil.IsCloseErr(err) {
 				return nil
 			}
@@ -749,6 +843,12 @@ func (p *managedProcess) copyWebSocketInput(ws *websocket.Conn) error {
 }
 
 func (s *Server) streamConnectProcess(w http.ResponseWriter, r *http.Request, codec connectCodec, proc *managedProcess) {
+	output, cancel := proc.output.subscribe()
+	s.streamConnectProcessWithOutput(w, r, codec, proc, output, cancel)
+}
+
+func (s *Server) streamConnectProcessWithOutput(w http.ResponseWriter, r *http.Request, codec connectCodec, proc *managedProcess, output <-chan processOutput, cancel func()) {
+	defer cancel()
 	w.Header().Set("Content-Type", connectContentType(codec))
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
@@ -758,8 +858,6 @@ func (s *Server) streamConnectProcess(w http.ResponseWriter, r *http.Request, co
 		return
 	}
 
-	output, cancel := proc.output.subscribe()
-	defer cancel()
 	keepalive := time.NewTicker(15 * time.Second)
 	defer keepalive.Stop()
 
@@ -771,19 +869,15 @@ func (s *Server) streamConnectProcess(w http.ResponseWriter, r *http.Request, co
 				_ = writer.end()
 				return
 			}
-			if len(payload) == 0 {
+			if len(payload.data) == 0 {
 				continue
 			}
 			err := writer.write(connectStreamResponse{Event: connectProcessEvent{
-				Data: &connectDataEvent{PTY: base64.StdEncoding.EncodeToString(payload)},
+				Data: connectDataEventForOutput(payload),
 			}})
 			if err != nil {
 				return
 			}
-		case <-proc.done:
-			_ = writer.write(connectStreamResponse{Event: connectProcessEvent{End: connectEndFromProcessExit(proc.exitInfo())}})
-			_ = writer.end()
-			return
 		case <-keepalive.C:
 			if err := writer.write(connectStreamResponse{Event: connectProcessEvent{Keepalive: &connectKeepaliveEvent{}}}); err != nil {
 				return
@@ -794,23 +888,80 @@ func (s *Server) streamConnectProcess(w http.ResponseWriter, r *http.Request, co
 	}
 }
 
-func copyProcessOutput(ws *websocket.Conn, output <-chan []byte, done <-chan struct{}, proc *managedProcess) error {
+func copyProcessOutput(ws *websocket.Conn, output <-chan processOutput, proc *managedProcess) error {
 	for {
 		select {
 		case payload, ok := <-output:
 			if !ok {
 				return websocket.JSON.Send(ws, processEvent{Type: "end", Exit: proc.exitInfo()})
 			}
-			if err := websocket.Message.Send(ws, payload); err != nil {
+			if err := websocket.Message.Send(ws, payload.data); err != nil {
 				if wsutil.IsCloseErr(err) {
 					return nil
 				}
 				return err
 			}
-		case <-done:
-			return websocket.JSON.Send(ws, processEvent{Type: "end", Exit: proc.exitInfo()})
 		}
 	}
+}
+
+func connectDataEventForOutput(output processOutput) *connectDataEvent {
+	encoded := base64.StdEncoding.EncodeToString(output.data)
+	switch output.stream {
+	case processOutputStdout:
+		return &connectDataEvent{Stdout: encoded}
+	case processOutputStderr:
+		return &connectDataEvent{Stderr: encoded}
+	default:
+		return &connectDataEvent{PTY: encoded}
+	}
+}
+
+func startPipeProcess(cmdPath string, args []string, cwd string, env []string, stdinEnabled bool) (*exec.Cmd, io.WriteCloser, []processOutputReader, error) {
+	if cmdPath == "" {
+		cmdPath = "/bin/sh"
+	}
+	cmdEnv := processEnv(env)
+	resolvedPath, err := resolveProcessPath(cmdPath, cmdEnv)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	cmd := exec.Command(resolvedPath, args...)
+	cmd.Env = cmdEnv
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("open process stdout: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		_ = stdout.Close()
+		return nil, nil, nil, fmt.Errorf("open process stderr: %w", err)
+	}
+	var stdin io.WriteCloser
+	if stdinEnabled {
+		stdin, err = cmd.StdinPipe()
+		if err != nil {
+			_ = stdout.Close()
+			_ = stderr.Close()
+			return nil, nil, nil, fmt.Errorf("open process stdin: %w", err)
+		}
+	}
+	if err := cmd.Start(); err != nil {
+		_ = stdout.Close()
+		_ = stderr.Close()
+		if stdin != nil {
+			_ = stdin.Close()
+		}
+		return nil, nil, nil, fmt.Errorf("start process: %w", err)
+	}
+	return cmd, stdin, []processOutputReader{
+		{stream: processOutputStdout, reader: stdout},
+		{stream: processOutputStderr, reader: stderr},
+	}, nil
 }
 
 func (p *managedProcess) pid() uint32 {
